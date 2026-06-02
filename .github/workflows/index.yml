@@ -66,7 +66,7 @@ jobs:
             full_path="$GITHUB_WORKSPACE/source/$file"
             [ -f "$full_path" ] || continue
             echo "=== Indexing: $file ==="
-            timeout 300 npx --yes @opencode-ai/cli run \
+            opencode run \
               --file "$full_path" \
               --dir "$GITHUB_WORKSPACE/vault" \
               --dangerously-skip-permissions \
