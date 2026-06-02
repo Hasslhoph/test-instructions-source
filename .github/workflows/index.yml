@@ -3,7 +3,7 @@ name: Index Instructions
 on:
   push:
     branches: [main]
-    paths: ['**/*.md', '.github/workflows/*']
+    paths: ['**/*.md']
 
 jobs:
   index:
@@ -23,81 +23,55 @@ jobs:
         with:
           node-version: 20
 
-      - name: Verify vault agents exist
+      - name: Setup
         run: |
-          ls -la "$GITHUB_WORKSPACE/vault/.opencode/agent/"*
-          echo "OK: agents found"
-
-      - name: Setup agent config
-        run: |
+          npm install -g @opencode-ai/cli
           mkdir -p ~/.config/opencode/agent
           cp "$GITHUB_WORKSPACE/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/
           sed -i "s|/Users/.*/Documents/Obsidian|$GITHUB_WORKSPACE/vault|g" ~/.config/opencode/agent/obsidian-indexer.md
-          echo "OK: agent configured"
-
-      - name: Setup opencode auth and install
-        run: |
           mkdir -p ~/.local/share/opencode
           printf '{"opencode-go":{"type":"api","key":"%s"}}\n' "${{ secrets.OPENCODE_GO_KEY }}" > ~/.local/share/opencode/auth.json
-          echo "OK: auth configured"
 
-      - name: Install opencode
+      - name: Index new files
         run: |
-          npm install -g @opencode-ai/cli 2>&1 | tail -20
-          echo "---INSTALL DONE---"
-          command -v opencode && opencode --version || echo "opencode not in PATH"
-          npx --yes @opencode-ai/cli --version 2>&1 || echo "npx also failed"
-          echo "OK"
-
-      - name: Detect new files
-        id: detect
-        run: |
+          set +e
           cd "$GITHUB_WORKSPACE/source"
           git fetch origin main --depth=2
-          FILES=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- '*.md' || true)
-          echo "changed<<EOF" >> $GITHUB_ENV
-          echo "$FILES" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-      - name: Index via obsidian-indexer
-        if: env.changed != ''
-        run: |
-          # First verify opencode works
-          echo "=== Step A: Test opencode version ==="
-          which opencode
-          opencode --version
-
-          echo "=== Step B: List agents ==="
-          ls -la ~/.config/opencode/agent/
-
-          echo "=== Step C: Check auth ==="
-          cat ~/.local/share/opencode/auth.json
-
-          echo "=== Step D: Index files ==="
-          for file in ${{ env.changed }}; do
-            full_path="$GITHUB_WORKSPACE/source/$file"
-            [ -f "$full_path" ] || continue
+          NEW=$(git diff --name-only --diff-filter=A HEAD~1 HEAD -- '*.md' || true)
+          
+          if [ -z "$NEW" ]; then
+            echo "No new files to index"
+            exit 0
+          fi
+          
+          for file in $NEW; do
+            full="$GITHUB_WORKSPACE/source/$file"
+            [ -f "$full" ] || continue
             echo "=== Indexing: $file ==="
+            
             opencode run --pure \
-              --file "$full_path" \
+              --file "$full" \
               --dir "$GITHUB_WORKSPACE/vault" \
               --dangerously-skip-permissions \
               --model opencode/deepseek-v4-flash-free \
-              --format json \
-              "@obsidian-indexer Create instruction from this file in $GITHUB_WORKSPACE/vault/Instructions/"
+              "@obsidian-indexer Create instruction file in vault/Instructions/ with frontmatter, wikilinks" \
+              2>&1
+            rc=$?
+            echo "Exit code: $rc"
+            if [ $rc -ne 0 ]; then
+              echo "OpenCode failed. Continuing anyway..."
+            fi
           done
 
-      - name: Commit and push
-        if: env.changed != ''
+      - name: Commit & push
         run: |
           cd "$GITHUB_WORKSPACE/vault"
           git config user.name "QA Indexer Bot"
           git config user.email "bot@qa-indexer"
           git add -A
           if ! git diff --staged --quiet; then
-            git commit -m "Auto-index: new instructions from Яна"
+            git commit -m "Auto-index new instructions"
             git push
-            echo "Pushed"
           else
             echo "No changes"
           fi
