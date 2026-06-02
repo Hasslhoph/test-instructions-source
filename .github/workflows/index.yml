@@ -27,6 +27,7 @@ jobs:
           mv /tmp/opencode ~/.opencode/bin/opencode
           chmod +x ~/.opencode/bin/opencode
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
+          opencode --version
 
       - name: Auth
         run: |
@@ -34,86 +35,35 @@ jobs:
           cat > ~/.local/share/opencode/auth.json << ENDAUTH
           {"opencode-go":{"type":"api","key":"${{ secrets.OPENCODE_GO_KEY }}"}}
           ENDAUTH
+          head -c 20 ~/.local/share/opencode/auth.json
 
-      - name: Index new instructions
+      - name: Index
         run: |
           set -e
           VAULT="${{ github.workspace }}/vault"
           SOURCE="${{ github.workspace }}/source"
-          TODAY=$(date +%Y-%m-%d)
-
-          # Write prompt to file to avoid shell escaping issues
-          cat > /tmp/prompt.txt << 'ENDPROMPT'
-          You are an Obsidian vault indexer.
-
-          ## Purpose
-          Create and maintain a knowledge base in Obsidian from iThive module instructions.
-
-          ## Vault structure
-          The vault has:
-          - MOC - Инструкции.md — map of content by module
-          - Modules/ — module files
-          - Instructions/ — instruction files
-
-          ## Available modules
-          | Module | Slug |
-          |--------|------|
-          | HelpDesk | helpdesk |
-          | База знаний | knowledgebase |
-          | Библиотека | library |
-          | Брендирование Битрикс24 | branding |
-          | Геймификация | gamification |
-          | Главная страница | homepage |
-          | Интерактивные подсказки | hints |
-          | Карта офиса + Бронирование | workplaces |
-          | Корпоративный университет | university |
-          | Мультиязычность | multilang |
-          | Настройка уведомлений | notifications |
-          | Опросы | polls |
-          | Оценка 360 | assessment360 |
-          | Управление целями. Дерево | goals-tree |
-          | Управление целями. Каскад | goals-cascade |
-          | Фото и видео галерея | mediagallery |
-
-          ## Workflow
-          1. Analyze: determine module, topic, related modules
-          2. Create/update file in Instructions/: {Module} - {Topic}.md
-          3. Frontmatter: title, module, type: instruction, version, created, updated, tags (type/instruction, module/{slug}), related
-          4. Body: # заголовок, **Модуль:** [[Module - ...]], sections: Описание, Ключевые функции, Предусловия, Шаги, Ожидаемый результат, Граничные случаи, Связанные документы
-          5. Add wikilinks [[Module - ...]] in body
-          6. Update MOC - Инструкции.md — add wikilink to correct module section
-          7. Update Modules/Module - {Name}.md — add wikilink to Инструкции section
-
-          ## Rules
-          - Always use wikilinks [[ ]]
-          - NEVER delete existing files — only update
-          - If file exists — UPDATE it, do not create duplicate
-          - Use Russian language
-          ENPROMPT
-
-          # Copy prompt into vault (avoid external_dir permission)
-          cp /tmp/prompt.txt "$VAULT/prompt.txt"
 
           for md in $(find "$SOURCE" -name '*.md' -not -path '*/.git/*'); do
             basename=$(basename "$md")
             [ -z "$basename" ] && continue
 
-            # Skip if filename matches existing vault file
             if ls "$VAULT/Instructions" 2>/dev/null | grep -qiF "$basename"; then
-              echo "Skip $basename (exists)"
+              echo "Skip $basename"
               continue
             fi
+
             echo "=== Index: $basename ==="
             cp "$md" "$VAULT/$basename"
-            opencode run "Index the file $basename" \
+
+            opencode run "Index FILE. Determine module. Create file with frontmatter in Instructions/. Update MOC and Module file. Use Russian. NEVER delete files. FILE: $basename" \
               --dir "$VAULT" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
-              --file prompt.txt \
-              2>&1 || echo "FAILED: $basename"
+              2>&1
+
+            echo "EXIT: $?"
             rm -f "$VAULT/$basename"
           done
-          rm -f "$VAULT/prompt.txt"
 
       - name: Commit and push
         run: |
@@ -121,7 +71,9 @@ jobs:
           git config user.name "QA Indexer Bot"
           git config user.email "bot@qa-indexer"
           git add -A
-          if ! git diff --staged --quiet; then
+          if git diff --staged --quiet; then
+            echo "No changes"
+          else
             git commit -m "Auto-index new instructions"
             git push
             echo "Pushed"
