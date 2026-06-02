@@ -55,20 +55,7 @@ jobs:
               --dir "${{ github.workspace }}/vault" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
-              "
-@obsidian-indexer
-
-I've attached a new instruction file. Please process it:
-
-1. Read the attached file and determine which module it belongs to (use the module list in your config)
-2. Create a new file in Instructions/ with the name format: {Module} - {Topic}.md
-3. Add proper frontmatter with title, module, type: instruction, tags, created date, and related modules
-4. Format the content with sections: Описание, Ключевые функции, Предусловия, Шаги, Ожидаемый результат, Граничные случаи, Связанные документы
-5. Add wikilinks: [[Module - {Module Name}]]
-6. Update MOC - Инструкции.md — add a wikilink to the new file under the correct module section
-7. Update Modules/Module - {Name}.md — add a wikilink to the new file in the Инструкции section
-
-The vault is located at ${{ github.workspace }}/vault" 2>&1
+              -- '@obsidian-indexer Read the attached file. Determine the module from content. Create a file in Instructions/{Module} - {Topic}.md with frontmatter (title, module, type:instruction, tags). Add wikilinks [[Module - {Name}]]. Then update MOC - Инструкции.md and Modules/Module - {Name}.md. Vault at ${{ github.workspace }}/vault' 2>&1
             echo "RC=$?"
           done
 
