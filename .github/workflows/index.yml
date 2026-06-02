@@ -53,13 +53,13 @@ jobs:
             echo "=== Processing: $rel ==="
             date +"Start: %H:%M:%S"
             echo "Processing: $rel"
+            CONTENT=$(cat "$md")
             opencode run \
               --file "$md" \
               --dir "$VAULTDIR" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
-              -- '@obsidian-indexer' 'Read the attached file. Extract the module from its content. Create the instruction file in Instructions/ with proper frontmatter and wikilinks. Then update MOC - Инструкции.md and Modules/Module - *.md. Do this now.' 2>&1
-            echo "Exit: $?"
+              "Read the file content from $md. Create a file in $VAULTDIR/Instructions/ named {Module} - {Topic}.md with frontmatter (title, module, type: instruction, tags, created, updated). Add wiki links to [[Module - {Name}]]. Then append the wikilink to MOC - Инструкции.md under the correct section. Also update the module file in Modules/Module - *.md. File content: $CONTENT" 2>&1
             date +"End: %H:%M:%S"
           done
 
