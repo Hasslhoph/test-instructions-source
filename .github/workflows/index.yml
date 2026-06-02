@@ -45,26 +45,30 @@ jobs:
           SRCDIR="${{ github.workspace }}/source"
           VAULTDIR="${{ github.workspace }}/vault"
           
+          echo "opencode version: $(opencode --version 2>&1)"
+          echo "model list:"
+          opencode models 2>&1 | grep deepseek
+          
           echo "=== Source files ==="
-          find "$SRCDIR" -name '*.md' -not -path '*/.git/*' | head -10
+          find "$SRCDIR" -name '*.md' -not -path '*/.git/*' | head -3
           
-          echo "=== Vault structure ==="
-          ls "$VAULTDIR/Instructions/" | head -3
-          
-          for md in $(find "$SRCDIR" -name '*.md' -not -path '*/.git/*' | head -3); do
+          for md in $(find "$SRCDIR" -name '*.md' -not -path '*/.git/*' | head -1); do
             rel=$(echo "$md" | sed "s|$SRCDIR/||")
             echo "=== Index: $rel ==="
+            echo "File size: $(wc -c < "$md") bytes"
             opencode run \
               --file "$md" \
               --dir "$VAULTDIR" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
-              "@obsidian-indexer Index this file. Determine the module. Create the file in Instructions/ with frontmatter. Update MOC and module file." 2>&1
+              "@obsidian-indexer Index this file in $VAULTDIR" 2>&1
             echo "EXIT: $?"
           done
 
       - name: Check results
         run: |
           cd "${{ github.workspace }}/vault"
-          git status --short | head -20
-          git diff --stat | head -10
+          echo "=== Git status ==="
+          git status --short
+          echo "=== Unstaged diff ==="
+          git diff --stat
