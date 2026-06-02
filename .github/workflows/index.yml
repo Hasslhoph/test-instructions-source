@@ -1,0 +1,149 @@
+name: Index Instructions
+
+on:
+  push:
+    branches: [main]
+    paths: ['**/*.md', '**/assessment-toc.yaml']
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source (Яна's instructions)
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Checkout knowledge base vault
+        uses: actions/checkout@v4
+        with:
+          repository: Hasslhoph/test-qa-knowledge-base
+          token: ${{ secrets.PAT_KB }}
+          path: vault
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install opencode
+        run: npm install -g @opencode-ai/cli
+
+      - name: Configure opencode and agents
+        run: |
+          mkdir -p ~/.config/opencode/agent
+
+          # Copy agents from vault
+          cp -r "$GITHUB_WORKSPACE/vault/.opencode/agent/"* ~/.config/opencode/agent/
+
+          # Patch vault path in agent configs to CI workspace
+          VAULT_PATH="$GITHUB_WORKSPACE/vault"
+          sed -i "s|/Users/.*/Documents/Obsidian|$VAULT_PATH|g" ~/.config/opencode/agent/obsidian-indexer.md
+          sed -i "s|/Users/.*/Documents/Obsidian|$VAULT_PATH|g" ~/.config/opencode/agent/qaithive.md
+          sed -i "s|/Users/.*/Documents/Obsidian|$VAULT_PATH|g" ~/.config/opencode/agent/qa-teacher.md
+
+      - name: Detect new/modified markdown files
+        id: detect
+        run: |
+          cd "$GITHUB_WORKSPACE/source"
+          git fetch origin main --depth=2
+          NEW_FILES=$(git diff --name-only --diff-filter=A HEAD~1 HEAD -- '*.md' || true)
+          MODIFIED_FILES=$(git diff --name-only --diff-filter=M HEAD~1 HEAD -- '*.md' || true)
+          echo "new_files<<EOF" >> $GITHUB_ENV
+          echo "$NEW_FILES" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          echo "modified_files<<EOF" >> $GITHUB_ENV
+          echo "$MODIFIED_FILES" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Setup AI provider (if configured)
+        if: env.QWEN_API_KEY != '' || env.OPENAI_API_KEY != '' || env.ANTHROPIC_API_KEY != ''
+        run: |
+          cat > ~/.config/opencode/opencode.jsonc << 'OPCODE'
+          {
+            "$schema": "https://opencode.ai/config.json",
+            "provider": {}
+          }
+          OPCODE
+          
+          if [ -n "$QWEN_API_KEY" ]; then
+            cat > ~/.config/opencode/opencode.jsonc << 'OPCODE'
+          {
+            "$schema": "https://opencode.ai/config.json",
+            "provider": {
+              "qwen": {
+                "apiKey": "${QWEN_API_KEY}",
+                "models": {
+                  "qwen3.6-plus-free": {
+                    "name": "qwen3.6-plus-free",
+                    "provider": "qwen"
+                  }
+                }
+              }
+            }
+          }
+          OPCODE
+            echo "AI_PROVIDER=qwen" >> $GITHUB_ENV
+            echo "AI_MODEL=qwen/qwen3.6-plus-free" >> $GITHUB_ENV
+          fi
+          
+          if [ -n "$OPENAI_API_KEY" ]; then
+            sed -i 's|"provider": {}|"provider": {"openai": {"apiKey": "'"$OPENAI_API_KEY"'","models": {"gpt-4o-mini": {"name": "gpt-4o-mini","provider": "openai"}}}}}' ~/.config/opencode/opencode.jsonc
+            echo "AI_PROVIDER=openai" >> $GITHUB_ENV
+            echo "AI_MODEL=openai/gpt-4o-mini" >> $GITHUB_ENV
+          fi
+          
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            sed -i 's|"provider": {}|"provider": {"anthropic": {"apiKey": "'"$ANTHROPIC_API_KEY"'","models": {"claude-sonnet-4-20250514": {"name": "claude-sonnet-4-20250514","provider": "anthropic"}}}}}' ~/.config/opencode/opencode.jsonc
+            echo "AI_PROVIDER=anthropic" >> $GITHUB_ENV
+            echo "AI_MODEL=anthropic/claude-sonnet-4-20250514" >> $GITHUB_ENV
+          fi
+
+      - name: Index new instructions
+        if: env.new_files != '' || env.modified_files != ''
+        run: |
+          cd "$GITHUB_WORKSPACE/source"
+          ALL_FILES="$new_files $modified_files"
+          
+          for file in $ALL_FILES; do
+            if [ ! -f "$GITHUB_WORKSPACE/source/$file" ]; then
+              echo "Skipping $file (not found)"
+              continue
+            fi
+            
+            echo "=== Indexing: $file ==="
+            
+            opencode run \
+              --agent obsidian-indexer \
+              --file "$GITHUB_WORKSPACE/source/$file" \
+              --dir "$GITHUB_WORKSPACE/vault" \
+              --dangerously-skip-permissions \
+              --model "${{ env.AI_MODEL }}" \
+              "Проиндексируй этот файл инструкции в vault.
+               
+               1. Прочитай содержимое файла
+               2. Определи модуль (по содержимому, контексту, имени файла)
+               3. Создай файл в папке Instructions/ с именем по шаблону {Module} - {Topic}.md
+               4. Добавь правильный frontmatter (title, module, type: instruction, tags, related)
+               5. Обнови MOC - Инструкции.md — добавь ссылку на новый файл в секцию соответствующего модуля
+               6. Обнови файл модуля в Modules/Module - {Name}.md — добавь ссылку в секцию инструкций
+               
+               Vault находится по пути: $GITHUB_WORKSPACE/vault"
+          done
+
+      - name: Commit and push to knowledge base
+        if: env.new_files != '' || env.modified_files != ''
+        run: |
+          cd "$GITHUB_WORKSPACE/vault"
+          git config user.name "QA Indexer Bot"
+          git config user.email "bot@qa-indexer"
+          git add -A
+          
+          if ! git diff --staged --quiet; then
+            COMMIT_MSG="🤖 Auto-index: $(git log -1 --format='%s' -- $GITHUB_WORKSPACE/source 2>/dev/null || echo 'new instructions from Яна')"
+            git commit -m "$COMMIT_MSG"
+            git push
+            echo "✅ Pushed to knowledge base"
+          else
+            echo "ℹ️ No changes to commit"
+          fi
