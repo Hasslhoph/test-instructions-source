@@ -26,9 +26,6 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install opencode
-        run: npm install -g @opencode-ai/cli
-
       - name: Configure opencode with Go subscription
         run: |
           mkdir -p ~/.config/opencode/agent
@@ -68,7 +65,7 @@ jobs:
             full_path="$GITHUB_WORKSPACE/source/$file"
             [ -f "$full_path" ] || continue
             echo "=== Indexing: $file ==="
-            opencode run \
+            npx --yes @opencode-ai/cli run \
               --agent obsidian-indexer \
               --file "$full_path" \
               --dir "$GITHUB_WORKSPACE/vault" \
