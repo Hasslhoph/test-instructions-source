@@ -9,7 +9,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: source
-          fetch-depth: 0
 
       - uses: actions/checkout@v4
         with:
@@ -45,21 +44,20 @@ jobs:
       - name: Index new files
         run: |
           set +e
-          cd "${{ github.workspace }}/source"
-          git fetch origin main --quiet
-          FILES=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- '*.md' || true)
-          echo "Found files: [$FILES]"
-          for file in $FILES; do
-            f="${{ github.workspace }}/source/$file"
-            [ -f "$f" ] || continue
-            echo "=== Indexing: $file ==="
+          SRCDIR="${{ github.workspace }}/source"
+          VAULTDIR="${{ github.workspace }}/vault"
+          
+          # Find .md files in source that don't exist in vault Instructions/
+          for md in $(find "$SRCDIR" -name '*.md' -not -path '*/.git/*' -not -path './.github/*' | head -5); do
+            rel=$(echo "$md" | sed "s|$SRCDIR/||")
+            echo "=== Processing: $rel ==="
             date +"Start: %H:%M:%S"
             opencode run --pure \
-              --file "$f" \
-              --dir "${{ github.workspace }}/vault" \
+              --file "$md" \
+              --dir "$VAULTDIR" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
-              -- '@obsidian-indexer Read the attached file. Determine the module from content. Create a file in Instructions/{Module} - {Topic}.md with frontmatter (title, module, type:instruction, tags). Add wikilinks [[Module - {Name}]]. Then update MOC - Инструкции.md and Modules/Module - {Name}.md. Vault at ${{ github.workspace }}/vault' 2>&1
+              -- '@obsidian-indexer Read the attached file. Determine the module from content. Create a file in Instructions/{Module} - {Topic}.md with frontmatter (title, module, type:instruction, tags). Add wikilinks [[Module - {Name}]]. Then update MOC - Инструкции.md and Modules/Module - {Name}.md.' 2>&1
             echo "Exit: $?"
             date +"End: %H:%M:%S"
           done
