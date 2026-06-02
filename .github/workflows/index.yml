@@ -23,44 +23,45 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup opencode and run indexer
-        env:
-          OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_KEY }}
+      - name: Verify vault agents exist
         run: |
-          set -x  # Print all commands
+          ls -la "$GITHUB_WORKSPACE/vault/.opencode/agent/"*
+          echo "OK: agents found"
 
-          # Verify vault agent files exist
-          ls -la "$GITHUB_WORKSPACE/vault/.opencode/agent/" 2>&1 || echo "MISSING: agent dir"
-          ls -la "$GITHUB_WORKSPACE/vault/.opencode/" 2>&1 || echo "MISSING: .opencode dir"
-
-          # Setup agents
+      - name: Setup agent config
+        run: |
           mkdir -p ~/.config/opencode/agent
-          cp -v "$GITHUB_WORKSPACE/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/
+          cp "$GITHUB_WORKSPACE/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/
           sed -i "s|/Users/.*/Documents/Obsidian|$GITHUB_WORKSPACE/vault|g" ~/.config/opencode/agent/obsidian-indexer.md
+          echo "OK: agent configured"
 
-          # Setup Go provider auth
+      - name: Setup opencode auth
+        run: |
           mkdir -p ~/.local/share/opencode
-          printf '{"opencode-go":{"type":"api","key":"%s"}}\n' "${OPENCODE_GO_API_KEY:?API KEY NOT SET}" > ~/.local/share/opencode/auth.json
-          cat ~/.local/share/opencode/auth.json | head -c 80
+          printf '{"opencode-go":{"type":"api","key":"%s"}}\n' "${{ secrets.OPENCODE_GO_KEY }}" > ~/.local/share/opencode/auth.json
+          echo "OK: auth configured"
 
-          # Verify opencode works
+      - name: Test npx opencode
+        run: |
           npx --yes @opencode-ai/cli --version
+          echo "OK: opencode CLI works"
 
-          # Detect new files
+      - name: Detect new files
+        id: detect
+        run: |
           cd "$GITHUB_WORKSPACE/source"
           git fetch origin main --depth=2
           FILES=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- '*.md' || true)
-          echo "New files: [$FILES]"
+          echo "changed<<EOF" >> $GITHUB_ENV
+          echo "$FILES" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
-          if [ -z "$FILES" ]; then
-            echo "No new .md files to process"
-            exit 0
-          fi
-
-          # Index each file
-          for file in $FILES; do
+      - name: Index via obsidian-indexer
+        if: env.changed != ''
+        run: |
+          for file in ${{ env.changed }}; do
             full_path="$GITHUB_WORKSPACE/source/$file"
-            [ -f "$full_path" ] || { echo "NOT FOUND: $full_path"; continue; }
+            [ -f "$full_path" ] || continue
             echo "=== Indexing: $file ==="
             npx --yes @opencode-ai/cli run \
               --agent obsidian-indexer \
@@ -68,10 +69,12 @@ jobs:
               --dir "$GITHUB_WORKSPACE/vault" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
-              "Index this instruction into the vault at $GITHUB_WORKSPACE/vault. Analyze the file, detect the module, create the file in Instructions/ with proper frontmatter and wikilinks, then update MOC - Инструкции.md and Modules/Module - {Name}.md."
+              "Create instruction file in $GITHUB_WORKSPACE/vault/Instructions/ with frontmatter, wikilinks. Update MOC and module file."
           done
 
-          # Commit and push
+      - name: Commit and push
+        if: env.changed != ''
+        run: |
           cd "$GITHUB_WORKSPACE/vault"
           git config user.name "QA Indexer Bot"
           git config user.email "bot@qa-indexer"
@@ -79,7 +82,7 @@ jobs:
           if ! git diff --staged --quiet; then
             git commit -m "Auto-index: new instructions from Яна"
             git push
-            echo "Pushed to knowledge base"
+            echo "Pushed"
           else
-            echo "No changes to commit"
+            echo "No changes"
           fi
