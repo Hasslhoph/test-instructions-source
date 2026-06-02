@@ -45,30 +45,40 @@ jobs:
           SRCDIR="${{ github.workspace }}/source"
           VAULTDIR="${{ github.workspace }}/vault"
           
-          echo "opencode version: $(opencode --version 2>&1)"
-          echo "model list:"
-          opencode models 2>&1 | grep deepseek
-          
-          echo "=== Source files ==="
-          find "$SRCDIR" -name '*.md' -not -path '*/.git/*' | head -3
-          
-          for md in $(find "$SRCDIR" -name '*.md' -not -path '*/.git/*' | head -1); do
-            rel=$(echo "$md" | sed "s|$SRCDIR/||")
-            echo "=== Index: $rel ==="
-            echo "File size: $(wc -c < "$md") bytes"
+          # Find first .md file
+          for md in $(find "$SRCDIR" -name '*.md' -not -path '*/.git/*' -not -path '*/.github/*' | head -1); do
+            echo "File: $md"
+            ls -la "$md"
+            
+            # Read file content
+            CONTENT=$(cat "$md")
+            
+            # Run opencode - without subagent, just direct AI instructions
+            echo "CONTENT: ${CONTENT:0:50}..."
+            
             opencode run \
-              --file "$md" \
               --dir "$VAULTDIR" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
-              "@obsidian-indexer Index this file in $VAULTDIR" 2>&1
+              "Create a file in $VAULTDIR/Instructions/ named TestModule-TestInstruction.md with the following content:
+---
+title: TestModule - TestInstruction
+module: TestModule
+type: instruction
+tags:
+  - type/instruction
+  - module/test
+---
+
+# Test Instruction
+
+This is a test" 2>&1
             echo "EXIT: $?"
           done
 
       - name: Check results
         run: |
           cd "${{ github.workspace }}/vault"
-          echo "=== Git status ==="
+          echo "=== New files ==="
+          find Instructions/ -name '*Test*' 2>/dev/null
           git status --short
-          echo "=== Unstaged diff ==="
-          git diff --stat
