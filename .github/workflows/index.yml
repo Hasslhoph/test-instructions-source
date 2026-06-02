@@ -94,11 +94,13 @@ jobs:
           # Copy prompt into vault (avoid external_dir permission)
           cp /tmp/prompt.txt "$VAULT/prompt.txt"
 
-          for md in $(find "$SOURCE" -name '*.md' -not -path '*/.git/*' | head -5); do
+          for md in $(find "$SOURCE" -name '*.md' -not -path '*/.git/*'); do
             basename=$(basename "$md")
-            if [ -z "$basename" ]; then continue; fi
-            if [ -f "$VAULT/Instructions/"*"$basename" ]; then
-              echo "Skip $basename"
+            [ -z "$basename" ] && continue
+
+            # Skip if filename matches existing vault file
+            if ls "$VAULT/Instructions" 2>/dev/null | grep -qiF "$basename"; then
+              echo "Skip $basename (exists)"
               continue
             fi
             echo "=== Index: $basename ==="
