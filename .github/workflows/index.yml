@@ -20,53 +20,49 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install opencode
+      - name: Setup
         run: |
-          npm install -g @opencode-ai/cli || echo "Caution: npm install had warnings"
-          echo "opencode: $(opencode --version 2>/dev/null || npx @opencode-ai/cli --version 2>/dev/null || echo 'using npx')"
-
-      - name: Setup agent and auth
-        run: |
+          npm install -g @opencode-ai/cli
+          
+          # Agent
           mkdir -p ~/.config/opencode/agent
           cp "${{ github.workspace }}/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/
           sed -i "s|/Users/.*/Documents/Obsidian|${{ github.workspace }}/vault|g" ~/.config/opencode/agent/obsidian-indexer.md
+          echo "Agent vault path:"
+          grep "Vault location" ~/.config/opencode/agent/obsidian-indexer.md
+          
+          # Auth
           mkdir -p ~/.local/share/opencode
-          cat > ~/.local/share/opencode/auth.json << 'EOF'
-          {
-            "opencode-go": {
-              "type": "api",
-              "key": "PLACEHOLDER_KEY"
-            }
-          }
-          EOF
-          sed -i "s/PLACEHOLDER_KEY/${{ secrets.OPENCODE_GO_KEY }}/g" ~/.local/share/opencode/auth.json
+          cat > ~/.local/share/opencode/auth.json << ENDAUTH
+          {"opencode-go":{"type":"api","key":"${{ secrets.OPENCODE_GO_KEY }}"}}
+          ENDAUTH
 
-      - name: Index new files
+      - name: Index
         run: |
           set +e
           SRCDIR="${{ github.workspace }}/source"
           VAULTDIR="${{ github.workspace }}/vault"
           
-          # Find .md files in source that don't exist in vault Instructions/
-          for md in $(find "$SRCDIR" -name '*.md' -not -path '*/.git/*' -not -path './.github/*' | head -5); do
+          echo "=== Source files ==="
+          find "$SRCDIR" -name '*.md' -not -path '*/.git/*' | head -10
+          
+          echo "=== Vault structure ==="
+          ls "$VAULTDIR/Instructions/" | head -3
+          
+          for md in $(find "$SRCDIR" -name '*.md' -not -path '*/.git/*' | head -3); do
             rel=$(echo "$md" | sed "s|$SRCDIR/||")
-            echo "=== Processing: $rel ==="
-            date +"Start: %H:%M:%S"
-            echo "Processing: $rel"
-            CONTENT=$(cat "$md")
+            echo "=== Index: $rel ==="
             opencode run \
               --file "$md" \
               --dir "$VAULTDIR" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
-              "Read the file content from $md. Create a file in $VAULTDIR/Instructions/ named {Module} - {Topic}.md with frontmatter (title, module, type: instruction, tags, created, updated). Add wiki links to [[Module - {Name}]]. Then append the wikilink to MOC - Инструкции.md under the correct section. Also update the module file in Modules/Module - *.md. File content: $CONTENT" 2>&1
-            date +"End: %H:%M:%S"
+              "@obsidian-indexer Index this file. Determine the module. Create the file in Instructions/ with frontmatter. Update MOC and module file." 2>&1
+            echo "EXIT: $?"
           done
 
-      - name: Push to KB
+      - name: Check results
         run: |
           cd "${{ github.workspace }}/vault"
-          git config user.name "QA Bot"
-          git config user.email "bot@qa"
-          git add -A
-          if git diff --staged --quiet; then echo "No changes"; else git commit -m "Auto-index"; git push; fi
+          git status --short | head -20
+          git diff --stat | head -10
