@@ -1,4 +1,4 @@
-# Тест opencode run с deepseek-v4-flash (попытка 2)
+# Тест opencode run с deepseek-v4-flash (попытка 3)
 
 Проверяем что obsidian-indexer с deepseek-v4-flash корректно обрабатывает инструкцию.
 
