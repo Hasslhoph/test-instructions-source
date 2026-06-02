@@ -27,21 +27,30 @@ jobs:
         env:
           OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_KEY }}
         run: |
-          set -e
+          set -x  # Print all commands
+
+          # Verify vault agent files exist
+          ls -la "$GITHUB_WORKSPACE/vault/.opencode/agent/" 2>&1 || echo "MISSING: agent dir"
+          ls -la "$GITHUB_WORKSPACE/vault/.opencode/" 2>&1 || echo "MISSING: .opencode dir"
 
           # Setup agents
           mkdir -p ~/.config/opencode/agent
-          cp "$GITHUB_WORKSPACE/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/
+          cp -v "$GITHUB_WORKSPACE/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/
           sed -i "s|/Users/.*/Documents/Obsidian|$GITHUB_WORKSPACE/vault|g" ~/.config/opencode/agent/obsidian-indexer.md
 
           # Setup Go provider auth
           mkdir -p ~/.local/share/opencode
-          printf '{"opencode-go":{"type":"api","key":"%s"}}\n' "$OPENCODE_GO_API_KEY" > ~/.local/share/opencode/auth.json
+          printf '{"opencode-go":{"type":"api","key":"%s"}}\n' "${OPENCODE_GO_API_KEY:?API KEY NOT SET}" > ~/.local/share/opencode/auth.json
+          cat ~/.local/share/opencode/auth.json | head -c 80
+
+          # Verify opencode works
+          npx --yes @opencode-ai/cli --version
 
           # Detect new files
           cd "$GITHUB_WORKSPACE/source"
           git fetch origin main --depth=2
           FILES=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- '*.md' || true)
+          echo "New files: [$FILES]"
 
           if [ -z "$FILES" ]; then
             echo "No new .md files to process"
@@ -51,7 +60,7 @@ jobs:
           # Index each file
           for file in $FILES; do
             full_path="$GITHUB_WORKSPACE/source/$file"
-            [ -f "$full_path" ] || continue
+            [ -f "$full_path" ] || { echo "NOT FOUND: $full_path"; continue; }
             echo "=== Indexing: $file ==="
             npx --yes @opencode-ai/cli run \
               --agent obsidian-indexer \
