@@ -60,7 +60,6 @@ jobs:
               --model opencode-go/deepseek-v4-flash \
               -- '@obsidian-indexer' 'Read the attached file. Extract the module from its content. Create the instruction file in Instructions/ with proper frontmatter and wikilinks. Then update MOC - Инструкции.md and Modules/Module - *.md. Do this now.' 2>&1
             echo "Exit: $?"
-            echo "Exit: $?"
             date +"End: %H:%M:%S"
           done
 
