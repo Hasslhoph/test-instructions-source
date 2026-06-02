@@ -78,25 +78,9 @@ def extract_title(content: str) -> str:
     return 'Untitled'
 
 
-def extract_first_sentence(content: str) -> str:
-    lines = content.split('\n')
-    desc_lines = []
-    capture = False
-    for line in lines:
-        if not capture:
-            if line.startswith('## ') or line.startswith('# ') and desc_lines:
-                continue
-            if line.strip() and not line.startswith('#') and not line.startswith('![') and not line.startswith('{%'):
-                capture = True
-                desc_lines.append(line.strip())
-        elif capture:
-            if line.startswith('## ') or line.startswith('# ') or line.startswith('{%'):
-                break
-            if line.strip():
-                desc_lines.append(line.strip())
-    
-    desc = ' '.join(desc_lines)
-    return desc[:200] + '...' if len(desc) > 200 else desc
+def vault_file_exists(vault_filename: str, vault_dir: str) -> bool:
+    filepath = os.path.join(vault_dir, 'Instructions', vault_filename)
+    return os.path.exists(filepath)
 
 
 def create_vault_file(content: str, filepath: str, vault_dir: str) -> str:
@@ -147,27 +131,21 @@ def update_moc(vault_dir: str, module_name: str, vault_filename: str):
     title_without_ext = vault_filename.replace('.md', '')
     wikilink = f"- [[{title_without_ext}]]"
     
+    if wikilink in moc_content:
+        print(f"  Already in MOC: {wikilink}")
+        return
+    
     section_header = f"### {module_name}"
-    if section_header in moc_content:
-        after_section = moc_content.split(section_header, 1)[1]
-        lines = after_section.split('\n')
-        insert_pos = len(moc_content.split(section_header, 1)[0]) + len(section_header)
-        
-        for i, line in enumerate(lines):
-            if line.startswith('\n### ') or line.startswith('### ') and i > 0:
-                break
-            if wikilink in line:
-                print(f"  Already in MOC: {wikilink}")
-                return
-        
-        if wikilink not in moc_content:
-            insert_pos = moc_content.find(section_header) + len(section_header)
-            moc_content = moc_content[:insert_pos] + '\n' + wikilink + moc_content[insert_pos:]
-            with open(moc_path, 'w', encoding='utf-8') as f:
-                f.write(moc_content)
-            print(f"  Updated MOC: added {wikilink}")
-    else:
+    if section_header not in moc_content:
         print(f"  Warning: Section '{section_header}' not found in MOC")
+        return
+    
+    idx = moc_content.find(section_header)
+    insert_pos = idx + len(section_header)
+    moc_content = moc_content[:insert_pos] + '\n' + wikilink + moc_content[insert_pos:]
+    with open(moc_path, 'w', encoding='utf-8') as f:
+        f.write(moc_content)
+    print(f"  Updated MOC: added {wikilink}")
 
 
 def update_module_file(vault_dir: str, module_name: str, vault_filename: str):
@@ -231,9 +209,15 @@ def main():
         with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        vault_filename = create_vault_file(content, rel_path, vault_dir)
+        title = extract_title(content)
+        module_slug, module_name = detect_module(content, rel_path)
+        vault_filename = f"{module_name} - {title}.md"
         
-        _, module_name = detect_module(content, rel_path)
+        if vault_file_exists(vault_filename, vault_dir):
+            print(f"  Skipping (already in vault): Instructions/{vault_filename}")
+            continue
+        
+        vault_filename = create_vault_file(content, rel_path, vault_dir)
         update_moc(vault_dir, module_name, vault_filename)
         update_module_file(vault_dir, module_name, vault_filename)
     

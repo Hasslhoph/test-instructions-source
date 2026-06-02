@@ -1,6 +1,9 @@
 name: Index Instructions
 
-on: [push]
+on:
+  push:
+    paths:
+      - '**.md'
 
 jobs:
   index:
@@ -16,36 +19,22 @@ jobs:
           token: ${{ secrets.PAT_KB }}
           path: vault
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
+      - name: Index via Python
+        env:
+          VAULT_PATH: ${{ github.workspace }}/vault
+          SOURCE_PATH: ${{ github.workspace }}/source
+        run: python3 ${{ github.workspace }}/source/indexer.py
 
-      - name: Setup
+      - name: Commit and push
         run: |
-          npm install -g @opencode-ai/cli || echo "npm ok"
-          
-          # Agent
-          mkdir -p ~/.config/opencode/agent
-          cp "${{ github.workspace }}/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/ || echo "cp ok"
-          sed -i "s|/Users/.*/Documents/Obsidian|${{ github.workspace }}/vault|g" ~/.config/opencode/agent/obsidian-indexer.md
-          echo "Agent vault path:"
-          grep "Vault location" ~/.config/opencode/agent/obsidian-indexer.md
-          
-          # Auth
-          mkdir -p ~/.local/share/opencode
-          cat > ~/.local/share/opencode/auth.json << ENDAUTH
-          {"opencode-go":{"type":"api","key":"${{ secrets.OPENCODE_GO_KEY }}"}}
-          ENDAUTH
-          echo "Auth file:"
-          head -c 60 ~/.local/share/opencode/auth.json
-
-      - name: Index
-        run: |
-          echo "=== Test opencode ==="
-          opencode run --dir "${{ github.workspace }}/vault" --dangerously-skip-permissions --model opencode-go/deepseek-v4-flash "say hello" 2>&1
-          echo "EXIT: $?"
-          echo "=== DONE ==="
-
-      - name: Check results
-        run: |
-          echo "OK"
+          cd "${{ github.workspace }}/vault"
+          git config user.name "QA Indexer Bot"
+          git config user.email "bot@qa-indexer"
+          git add -A
+          if ! git diff --staged --quiet; then
+            git commit -m "Auto-index new instructions"
+            git push
+            echo "✅ Pushed to knowledge base"
+          else
+            echo "ℹ️ No changes to commit"
+          fi
