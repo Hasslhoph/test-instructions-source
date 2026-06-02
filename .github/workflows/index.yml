@@ -21,27 +21,77 @@ jobs:
           token: ${{ secrets.PAT_KB }}
           path: vault
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: 20
 
-      - name: Run indexer script
-        env:
-          VAULT_PATH: ${{ github.workspace }}/vault
-          SOURCE_PATH: ${{ github.workspace }}/source
-        run: python3 ${{ github.workspace }}/source/indexer.py
+      - name: Install opencode
+        run: npm install -g @opencode-ai/cli
+
+      - name: Configure opencode with Go subscription
+        run: |
+          mkdir -p ~/.config/opencode/agent
+          mkdir -p ~/.local/share/opencode
+
+          # Copy agents from vault
+          cp -r "$GITHUB_WORKSPACE/vault/.opencode/agent/"* ~/.config/opencode/agent/
+
+          # Patch vault path in all agents
+          sed -i "s|/Users/.*/Documents/Obsidian|$GITHUB_WORKSPACE/vault|g" ~/.config/opencode/agent/*.md
+
+          # Set up Go provider auth
+          cat > ~/.local/share/opencode/auth.json << EOF
+          {
+            "opencode-go": {
+              "type": "api",
+              "key": "${{ secrets.OPENCODE_GO_KEY }}"
+            }
+          }
+          EOF
+
+      - name: Detect new/modified files
+        id: detect
+        run: |
+          cd "$GITHUB_WORKSPACE/source"
+          git fetch origin main --depth=2
+          FILES=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- '*.md' || true)
+          echo "changed<<EOF" >> $GITHUB_ENV
+          echo "$FILES" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Index via obsidian-indexer
+        if: env.changed != ''
+        run: |
+          cd /tmp
+          for file in ${{ env.changed }}; do
+            full_path="$GITHUB_WORKSPACE/source/$file"
+            [ -f "$full_path" ] || continue
+            echo "=== Indexing: $file ==="
+            opencode run \
+              --agent obsidian-indexer \
+              --file "$full_path" \
+              --dir "$GITHUB_WORKSPACE/vault" \
+              --dangerously-skip-permissions \
+              --model opencode-go/deepseek-v4-flash \
+              "Проиндексируй этот файл инструкции в vault.
+               1. Прочитай файл, определи модуль
+               2. Создай Instructions/{Module} - {Topic}.md с frontmatter и wikilinks
+               3. Обнови MOC - Инструкции.md
+               4. Обнови Modules/Module - {Name}.md"
+          done
 
       - name: Commit and push
+        if: env.changed != ''
         run: |
-          cd "${{ github.workspace }}/vault"
+          cd "$GITHUB_WORKSPACE/vault"
           git config user.name "QA Indexer Bot"
           git config user.email "bot@qa-indexer"
           git add -A
           if ! git diff --staged --quiet; then
-            git commit -m "Auto-index instructions from source"
+            git commit -m "Auto-index: new instructions from Яна"
             git push
-            echo "✅ Pushed to knowledge base"
+            echo "Pushed to knowledge base"
           else
-            echo "ℹ️ No changes to commit"
+            echo "No changes to commit"
           fi
