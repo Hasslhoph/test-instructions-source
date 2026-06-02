@@ -46,17 +46,21 @@ jobs:
           set +e
           cd "${{ github.workspace }}/source"
           git fetch origin main --depth=2
-          for file in $(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- '*.md' || true); do
+          FILES=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- '*.md' || true)
+          echo "Found files: [$FILES]"
+          for file in $FILES; do
             f="${{ github.workspace }}/source/$file"
             [ -f "$f" ] || continue
-            echo "=== $file ==="
+            echo "=== Indexing: $file ==="
+            date +"Start: %H:%M:%S"
             opencode run --pure \
               --file "$f" \
               --dir "${{ github.workspace }}/vault" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
               -- '@obsidian-indexer Read the attached file. Determine the module from content. Create a file in Instructions/{Module} - {Topic}.md with frontmatter (title, module, type:instruction, tags). Add wikilinks [[Module - {Name}]]. Then update MOC - Инструкции.md and Modules/Module - {Name}.md. Vault at ${{ github.workspace }}/vault' 2>&1
-            echo "RC=$?"
+            echo "Exit: $?"
+            date +"End: %H:%M:%S"
           done
 
       - name: Push to KB
