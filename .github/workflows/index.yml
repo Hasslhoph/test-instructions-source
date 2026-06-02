@@ -45,7 +45,6 @@ jobs:
           for md in $(find "$SOURCE" -name '*.md' -not -path '*/.git/*' | head -5); do
             basename=$(basename "$md")
 
-            # Check if already in vault
             if ls "$VAULT/Instructions/"*"$basename" 1>/dev/null 2>&1; then
               echo "Skip $basename (exists)"
               continue
@@ -57,11 +56,127 @@ jobs:
             echo "=== Index: $basename ==="
             cp "$md" "$VAULT/$basename"
 
-            # Build prompt with the file as the message
-            PROMPT="You are an Obsidian vault indexer. Index FILE_NAME. Determine the module. Check Instructions/ for existing files with same topic — if found, merge/update; if not, create new. Filename: Instructions/{Module} - {Topic}.md. Frontmatter: title, module, type: instruction, version, created: $TODAY, updated: $TODAY, tags, related. Body sections: Описание, Ключевые функции, Предусловия, Шаги, Ожидаемый результат, Граничные случаи, Связанные документы. After creating: update MOC - Инструкции.md and Modules/Module - {Name}.md with wikilinks. Write in Russian."
+            PROMPT="You are an Obsidian vault indexer. Index the file $basename.
 
-            # Replace FILE_NAME placeholder with actual filename
-            PROMPT="${PROMPT/FILE_NAME/$basename}"
+## Purpose
+Create and maintain a knowledge base (RAG) in Obsidian from iThive module instructions. The neural network uses this base for quick information retrieval when creating checklists, answering questions, and analyzing functionality.
+
+IMPORTANT: You index ONLY instructions. Test cases and checklists are handled separately.
+
+## Vault structure
+Vault path: $VAULT
+
+The vault has:
+- MOC - Инструкции.md — map of content for all instructions, organized by module
+- MOC - Модули.md — map of content for modules
+- Modules/ — one file per module (Module - {Name}.md)
+- Instructions/ — instruction files
+- Test Cases/ — test cases (NOT your responsibility)
+
+## Available modules
+
+| Module | Slug | Package |
+|--------|------|---------|
+| HelpDesk | helpdesk | ithive.helpdesk |
+| База знаний | knowledgebase | ithive.knowledgebase |
+| Библиотека | library | ithive.library |
+| Брендирование Битрикс24 | branding | ithive.changeportaldefaultheme |
+| Геймификация | gamification | ithive.gamification |
+| Главная страница | homepage | ithive.homepage |
+| Интерактивные подсказки | hints | ithive.hints |
+| Карта офиса + Бронирование | workplaces | ithive.workplaces |
+| Корпоративный университет | university | ithive.ipr |
+| Мультиязычность | multilang | ithive.b24multilanguage |
+| Настройка уведомлений | notifications | ithive.imsettingsforall |
+| Опросы | polls | ithive.polls |
+| Оценка 360 | assessment360 | ithive.assessment360 |
+| Управление целями. Дерево | goals-tree | ithive.goalsmanagement2 |
+| Управление целями. Каскад | goals-cascade | ithive.goalsmanagement |
+| Фото и видео галерея | mediagallery | ithive.mediagallery |
+
+## Workflow
+
+### 1. Analyze content
+
+Determine:
+- Module: by keywords, module name, package
+- Topic: what specifically (authorization, CRUD, UI, etc.)
+- Related modules: are other modules mentioned
+
+### 2. Create or update file
+
+Create/update file in Instructions/.
+Filename: {Module} - {Topic}.md
+
+### 3. Frontmatter (properties)
+
+Always add:
+---
+title: \"{Module} - {Topic}\"
+module: \"{Module}\"
+type: instruction
+version: \"\"
+created: $TODAY
+updated: $TODAY
+tags:
+  - type/instruction
+  - module/{slug}
+related: []
+---
+
+### 4. File structure
+
+Required sections in the body:
+
+# {Module} - {Topic}
+
+**Модуль:** [[Module - {Module}]]
+
+## Описание
+
+## Ключевые функции
+
+> List the main functions/scenarios. Critical for AI checklist generation.
+
+- Function 1
+- Function 2
+
+## Предусловия
+
+## Шаги
+
+## Ожидаемый результат
+
+## Граничные случаи
+
+> Edge cases, limitations, known issues.
+
+## Связанные документы
+
+### 5. Wikilinks
+
+In the body add:
+- Link to module: [[Module - {Module}]]
+- Links to related modules if mentioned
+
+### 6. Update MOC
+
+After creating/updating the file, update MOC - Инструкции.md.
+Add wikilink to the new file in the corresponding module section.
+
+### 7. Update Module file
+
+If the module file does not yet have a link to the new instruction, add it to the 'Инструкции' section.
+
+## Rules
+
+- Always use wikilinks [[ ]] for connections
+- Always add tags #module/{slug} and #type/instruction
+- If module is unclear — choose the best match by context
+- If document covers multiple modules — list all in 'related'
+- NEVER delete existing files — only update them
+- If a file already exists — UPDATE it, do NOT create a duplicate
+- Index ONLY instructions (not test cases or checklists)"
 
             opencode run "$PROMPT" \
               --dir "$VAULT" \
