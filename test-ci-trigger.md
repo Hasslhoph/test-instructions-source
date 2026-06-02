@@ -1,0 +1,1 @@
+# HelpDesk - Тест CI pipeline
