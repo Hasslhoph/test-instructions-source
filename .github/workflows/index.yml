@@ -3,7 +3,6 @@ name: Index Instructions
 on:
   push:
     branches: [main]
-    paths: ['**/*.md']
 
 jobs:
   index:
