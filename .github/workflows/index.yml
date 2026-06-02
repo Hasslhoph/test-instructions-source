@@ -36,95 +36,40 @@ jobs:
           ENDAUTH
 
       - name: Index new instructions
-        shell: bash
         run: |
           set -e
           VAULT="${{ github.workspace }}/vault"
           SOURCE="${{ github.workspace }}/source"
+          TODAY=$(date +%Y-%m-%d)
 
-          # Find new .md files not already in vault
-          for md in $(find "$SOURCE" -name '*.md' -not -path '*/.git/*'); do
-            rel=$(echo "$md" | sed "s|$SOURCE/||")
+          for md in $(find "$SOURCE" -name '*.md' -not -path '*/.git/*' | head -5); do
             basename=$(basename "$md")
 
-            # Skip if filename already exists in vault Instructions/
-            if ls "$VAULT/Instructions/"*"$basename" 2>/dev/null | head -1 | grep -q .; then
-              echo "Skip $rel (already in vault)"
+            # Check if already in vault
+            if ls "$VAULT/Instructions/"*"$basename" 1>/dev/null 2>&1; then
+              echo "Skip $basename (exists)"
+              continue
+            fi
+            if [ -z "$basename" ]; then
               continue
             fi
 
-            echo "=== Index: $rel ==="
-
-            # Copy file into vault (avoid external_directory permission issue)
+            echo "=== Index: $basename ==="
             cp "$md" "$VAULT/$basename"
 
-            # Run opencode with obsidian-indexer prompt
-            opencode run --dir "$VAULT" \
+            # Build prompt with the file as the message
+            PROMPT="You are an Obsidian vault indexer. Index FILE_NAME. Determine the module. Check Instructions/ for existing files with same topic — if found, merge/update; if not, create new. Filename: Instructions/{Module} - {Topic}.md. Frontmatter: title, module, type: instruction, version, created: $TODAY, updated: $TODAY, tags, related. Body sections: Описание, Ключевые функции, Предусловия, Шаги, Ожидаемый результат, Граничные случаи, Связанные документы. After creating: update MOC - Инструкции.md and Modules/Module - {Name}.md with wikilinks. Write in Russian."
+
+            # Replace FILE_NAME placeholder with actual filename
+            PROMPT="${PROMPT/FILE_NAME/$basename}"
+
+            opencode run "$PROMPT" \
+              --dir "$VAULT" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
-              "You are an Obsidian vault indexer. Index the file $basename.
+              2>&1 || echo "FAILED: $basename"
 
-Core rules:
-- Determine which module the file belongs to
-- If a file with the same topic already exists in Instructions/ — UPDATE it (merge new info, add sections, improve)
-- If it does NOT exist — CREATE new file
-- Always add wikilinks to related modules and instructions
-
-Available modules:
-- helpdesk: HelpDesK (ithive.helpdesk)
-- knowledgebase: База знаний (ithive.knowledgebase)
-- library: Библиотека (ithive.library)
-- branding: Брендирование Битрикс24 (ithive.changeportaldefaultheme)
-- gamification: Геймификация (ithive.gamification)
-- homepage: Главная страница (ithive.homepage)
-- hints: Интерактивные подсказки (ithive.hints)
-- workplaces: Карта офиса + Бронирование (ithive.workplaces)
-- university: Корпоративный университет (ithive.ipr)
-- multilang: Мультиязычность (ithive.b24multilanguage)
-- notifications: Настройка уведомлений (ithive.imsettingsforall)
-- polls: Опросы (ithive.polls)
-- assessment360: Оценка 360 (ithive.assessment360)
-- goals-tree: Управление целями. Дерево (ithive.goalsmanagement2)
-- goals-cascade: Управление целями. Каскад (ithive.goalsmanagement)
-- mediagallery: Фото и видео галерея (ithive.mediagallery)
-
-Filename format: Instructions/{Module} - {Topic}.md
-
-Frontmatter:
----
-title: \"{Module} - {Topic}\"
-module: \"{Module}\"
-type: instruction
-version: \"\"
-created: $(date +%Y-%m-%d)
-updated: $(date +%Y-%m-%d)
-tags:
-  - type/instruction
-  - module/{slug}
-related: []
----
-
-Body structure:
-# {Module} - {Topic}
-
-**Модуль:** [[Module - {Module}]]
-
-## Описание
-## Ключевые функции
-## Предусловия
-## Шаги
-## Ожидаемый результат
-## Граничные случаи
-## Связанные документы
-- [[Module - {Module}]]
-
-After creating/updating the file:
-1. Update MOC - Инструкции.md — add wikilink to the correct module section
-2. Update Modules/Module - {Name}.md — add wikilink to Инструкции section
-
-If module is unclear, choose best match by context."
-          echo "EXIT: $?"
-          rm -f "$VAULT/$basename"
+            rm -f "$VAULT/$basename"
           done
 
       - name: Commit and push
@@ -137,6 +82,4 @@ If module is unclear, choose best match by context."
             git commit -m "Auto-index new instructions"
             git push
             echo "Pushed to knowledge base"
-          else
-            echo "No changes"
           fi
