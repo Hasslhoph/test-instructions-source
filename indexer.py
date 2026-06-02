@@ -31,6 +31,19 @@ MODULES = [
 
 MODULE_NAMES = {slug: name for slug, name, pkg in MODULES}
 MODULES_PROMPT = '\n'.join([f'- {slug}: {name} ({pkg})' for slug, name, pkg in MODULES])
+TRACKING_FILE = os.path.join(VAULT_PATH, '.indexed_files.json')
+
+
+def load_indexed():
+    if os.path.exists(TRACKING_FILE):
+        with open(TRACKING_FILE, 'r') as f:
+            return set(json.load(f))
+    return set()
+
+
+def save_indexed(indexed_set):
+    with open(TRACKING_FILE, 'w') as f:
+        json.dump(sorted(indexed_set), f, indent=2)
 
 
 def extract_title(content: str) -> str:
@@ -40,8 +53,7 @@ def extract_title(content: str) -> str:
 
 def find_opencode() -> str | None:
     for cmd in ['opencode', 'npx', 'opencode.exe']:
-        path = shutil.which(cmd)
-        if path:
+        if shutil.which(cmd):
             return cmd
     return None
 
@@ -49,15 +61,15 @@ def find_opencode() -> str | None:
 def analyze_with_ai(filepath: str, content: str, vault_dir: str) -> dict:
     opencode_cmd = find_opencode()
     if not opencode_cmd:
-        print(f'  opencode CLI not found, skipping AI analysis')
-        return None
+        print('ERROR: opencode CLI not found')
+        sys.exit(1)
 
     prompt = f"""Analyze this instruction file and return ONLY valid JSON.
 
 FILE PATH: {filepath}
 
 CONTENT:
-{content[:4000]}
+{content[:2000]}
 
 AVAILABLE MODULES:
 {MODULES_PROMPT}
@@ -88,22 +100,22 @@ If the module is unclear, choose the best match based on keywords and context.""
                     '--print-logs', prompt]
 
         result = subprocess.run(args, capture_output=True, text=True, timeout=180)
-        stdout = result.stdout.strip()
         stderr_str = result.stderr.strip()
 
         if result.returncode != 0:
             print(f'  AI analysis failed (exit {result.returncode}): {stderr_str[:300]}')
-            return None
+            sys.exit(1)
     except FileNotFoundError:
-        print(f'  opencode CLI not found at path')
-        return None
+        print('ERROR: opencode CLI not found')
+        sys.exit(1)
     except subprocess.TimeoutExpired:
-        print(f'  AI analysis timed out (180s)')
-        return None
+        print('ERROR: AI analysis timed out (180s)')
+        sys.exit(1)
     except Exception as e:
-        print(f'  AI analysis error: {e}')
-        return None
+        print(f'ERROR: AI analysis error: {e}')
+        sys.exit(1)
 
+    stdout = result.stdout.strip()
     for pattern in [r'```(?:json)?\s*\n?(.*?)```', r'(\{[\s\S]*?"module_slug"[\s\S]*?\})']:
         match = re.search(pattern, stdout, re.DOTALL)
         if match:
@@ -112,49 +124,8 @@ If the module is unclear, choose the best match based on keywords and context.""
             except json.JSONDecodeError:
                 continue
 
-    print(f'  AI response not parseable: {stdout[:300]}')
-    return None
-
-
-def detect_module_fallback(content: str, filepath: str) -> tuple:
-    content_lower = content.lower()
-    path_lower = filepath.lower()
-
-    keywords = {
-        'helpdesk': ['helpdesk', 'тикет', 'обращение', 'sla', 'тп', 'поддержка'],
-        'knowledgebase': ['база знаний', 'статья', 'знаний', 'knowledge'],
-        'library': ['библиотек', 'книг', 'библиотек'],
-        'branding': ['брендирован', 'дизайн', 'тема', 'figma', 'зефир', 'legacy'],
-        'gamification': ['геймификац', 'балл', 'рейтинг', 'бонус', 'доска почета'],
-        'homepage': ['главная страниц', 'виджет', 'баннер', 'новост'],
-        'hints': ['подсказк', 'hint', 'онбординг'],
-        'workplaces': ['карта офис', 'бронирован', 'рабочее мест'],
-        'university': ['университет', 'курс', 'компетенци', 'обучени'],
-        'multilang': ['мультиязычн', 'перевод', 'multilang'],
-        'notifications': ['уведомлен', 'notification'],
-        'polls': ['опрос', 'голосован'],
-        'assessment360': ['оценка 360', 'assessment360', 'компетенци', 'оценк'],
-        'goals-tree': ['дерев', 'цел', 'goals'],
-        'goals-cascade': ['каскад', 'цел', 'goals'],
-        'mediagallery': ['галере', 'медиа', 'фото', 'видео'],
-    }
-
-    best_match = None
-    best_score = 0
-    for slug, kw_list in keywords.items():
-        score = 0
-        for kw in kw_list:
-            if kw in content_lower:
-                score += content_lower.count(kw)
-            if kw in path_lower:
-                score += 2
-        if score > best_score:
-            best_score = score
-            best_match = slug
-
-    if best_match and best_match in MODULE_NAMES:
-        return best_match, MODULE_NAMES[best_match]
-    return 'unknown', 'Unknown'
+    print(f'ERROR: AI response not parseable: {stdout[:300]}')
+    sys.exit(1)
 
 
 def clean_title(title: str, module_name: str) -> str:
@@ -166,22 +137,14 @@ def clean_title(title: str, module_name: str) -> str:
     return title
 
 
-def vault_file_exists(vault_filename: str, original_title: str | None = None, module_name: str | None = None) -> bool:
-    base = os.path.join(VAULT_PATH, 'Instructions')
-    if os.path.exists(os.path.join(base, vault_filename)):
-        return True
-    if original_title and module_name:
-        legacy = f'{module_name} - {original_title}.md'
-        if legacy != vault_filename and os.path.exists(os.path.join(base, legacy)):
-            return True
-    return False
+def vault_file_exists(vault_filename: str) -> bool:
+    return os.path.exists(os.path.join(VAULT_PATH, 'Instructions', vault_filename))
 
 
 def create_vault_file(content: str, title: str, module_slug: str, module_name: str) -> str:
     today = date.today().isoformat()
     title = clean_title(title, module_name)
     vault_filename = f'{module_name} - {title}.md'
-    vault_filepath = os.path.join(VAULT_PATH, 'Instructions', vault_filename)
 
     frontmatter = f'''---
 title: "{module_name} - {title}"
@@ -204,7 +167,7 @@ related: []
     vault_content = frontmatter + content
 
     os.makedirs(os.path.join(VAULT_PATH, 'Instructions'), exist_ok=True)
-    with open(vault_filepath, 'w', encoding='utf-8') as f:
+    with open(os.path.join(VAULT_PATH, 'Instructions', vault_filename), 'w', encoding='utf-8') as f:
         f.write(vault_content)
 
     print(f'  Created: Instructions/{vault_filename}')
@@ -224,7 +187,6 @@ def update_moc(module_name: str, vault_filename: str):
     wikilink = f'- [[{title_without_ext}]]'
 
     if wikilink in moc_content:
-        print(f'  Already in MOC: {wikilink}')
         return
 
     section_header = f'### {module_name}'
@@ -253,7 +215,6 @@ def update_module_file(module_name: str, vault_filename: str):
     wikilink = f'- [[{title_without_ext}]]'
 
     if wikilink in content:
-        print(f'  Already in module file: {wikilink}')
         return
 
     instructions_section = '## Инструкции'
@@ -280,6 +241,8 @@ def main():
         print(f'Error: Vault directory not found: {VAULT_PATH}')
         sys.exit(1)
 
+    indexed_set = load_indexed()
+
     md_files = []
     for root, dirs, files in os.walk(SOURCE_PATH):
         for f in files:
@@ -290,12 +253,11 @@ def main():
         print('No .md files found in source')
         return
 
-    print(f'Found {len(md_files)} .md files')
+    new_files = [f for f in md_files if os.path.relpath(f, SOURCE_PATH) not in indexed_set]
+    print(f'Found {len(md_files)} .md files, {len(new_files)} new, {len(md_files) - len(new_files)} already indexed')
 
-    ai_failures = 0
     indexed = 0
-
-    for filepath in md_files:
+    for filepath in new_files:
         rel_path = os.path.relpath(filepath, SOURCE_PATH)
         print(f'\nProcessing: {rel_path}')
 
@@ -303,45 +265,39 @@ def main():
             content = f.read()
 
         title = extract_title(content)
-        original_title = title
-
-        module_slug, module_name = detect_module_fallback(content, rel_path)
-        title = clean_title(title, module_name)
-        quick_vault_filename = f'{module_name} - {title}.md'
-        if vault_file_exists(quick_vault_filename, original_title, module_name):
-            print(f'  Skipping (already in vault): Instructions/{quick_vault_filename}')
-            continue
 
         result = analyze_with_ai(rel_path, content, VAULT_PATH)
 
-        if result is None:
-            ai_failures += 1
-            print(f'  AI failed, using fallback: {module_name}')
-        else:
-            ai_slug = result.get('module_slug', '')
-            ai_name = result.get('module_name', '')
-            ai_title = result.get('title', title)
+        ai_slug = result.get('module_slug', '')
+        ai_name = result.get('module_name', '')
+        ai_title = result.get('title', title)
 
-            for s, n in MODULE_NAMES.items():
-                if ai_slug == s or (ai_name and (n.lower() in ai_name.lower() or ai_name.lower() in n.lower())):
-                    ai_slug, ai_name = s, n
-                    break
+        for s, n in MODULE_NAMES.items():
+            if ai_slug == s or (ai_name and (n.lower() in ai_name.lower() or ai_name.lower() in n.lower())):
+                ai_slug, ai_name = s, n
+                break
 
-            if ai_slug in MODULE_NAMES:
-                module_slug, module_name, title = ai_slug, MODULE_NAMES[ai_slug], clean_title(ai_title, MODULE_NAMES[ai_slug])
-                original_title = ai_title
+        if ai_slug not in MODULE_NAMES:
+            print(f'  ERROR: AI returned unknown module "{ai_name}", slug "{ai_slug}"')
+            sys.exit(1)
+
+        module_slug, module_name, title = ai_slug, MODULE_NAMES[ai_slug], clean_title(ai_title, MODULE_NAMES[ai_slug])
 
         vault_filename = f'{module_name} - {title}.md'
-        if vault_file_exists(vault_filename, original_title, module_name):
+
+        if vault_file_exists(vault_filename):
             print(f'  Skipping (already in vault): Instructions/{vault_filename}')
+            indexed_set.add(rel_path)
             continue
 
         final_filename = create_vault_file(content, title, module_slug, module_name)
         update_moc(module_name, final_filename)
         update_module_file(module_name, final_filename)
+        indexed_set.add(rel_path)
         indexed += 1
 
-    print(f'\nDone. Indexed: {indexed}, AI fallbacks: {ai_failures}, skipped: {len(md_files) - indexed}')
+    save_indexed(indexed_set)
+    print(f'\nDone. Indexed: {indexed}, skipped: {len(new_files) - indexed}')
 
 
 if __name__ == '__main__':
