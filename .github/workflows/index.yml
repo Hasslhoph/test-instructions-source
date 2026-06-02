@@ -16,5 +16,51 @@ jobs:
           token: ${{ secrets.PAT_KB }}
           path: vault
 
-      - name: Test
-        run: echo "hello" && ls "$GITHUB_WORKSPACE/vault/.opencode/agent/" && echo "OK"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install opencode
+        run: npm install -g @opencode-ai/cli
+
+      - name: Setup agent and auth
+        run: |
+          mkdir -p ~/.config/opencode/agent
+          cp "${{ github.workspace }}/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/
+          sed -i "s|/Users/.*/Documents/Obsidian|${{ github.workspace }}/vault|g" ~/.config/opencode/agent/obsidian-indexer.md
+          mkdir -p ~/.local/share/opencode
+          cat > ~/.local/share/opencode/auth.json << 'EOF'
+          {
+            "opencode-go": {
+              "type": "api",
+              "key": "PLACEHOLDER_KEY"
+            }
+          }
+          EOF
+          sed -i "s/PLACEHOLDER_KEY/${{ secrets.OPENCODE_GO_KEY }}/g" ~/.local/share/opencode/auth.json
+
+      - name: Index new files
+        run: |
+          set +e
+          cd "${{ github.workspace }}/source"
+          git fetch origin main --depth=2
+          for file in $(git diff --name-only --diff-filter=A HEAD~1 HEAD -- '*.md' || true); do
+            f="${{ github.workspace }}/source/$file"
+            [ -f "$f" ] || continue
+            echo "=== $file ==="
+            opencode run --pure \
+              --file "$f" \
+              --dir "${{ github.workspace }}/vault" \
+              --dangerously-skip-permissions \
+              --model opencode/deepseek-v4-flash-free \
+              "@obsidian-indexer Process this instruction into vault/Instructions/" 2>&1
+            echo "RC=$?"
+          done
+
+      - name: Push to KB
+        run: |
+          cd "${{ github.workspace }}/vault"
+          git config user.name "QA Bot"
+          git config user.email "bot@qa"
+          git add -A
+          if git diff --staged --quiet; then echo "No changes"; else git commit -m "Auto-index"; git push; fi
