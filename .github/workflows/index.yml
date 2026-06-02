@@ -27,7 +27,6 @@ jobs:
           mv /tmp/opencode ~/.opencode/bin/opencode
           chmod +x ~/.opencode/bin/opencode
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
-          ~/.opencode/bin/opencode --version
 
       - name: Auth
         run: |
@@ -36,11 +35,97 @@ jobs:
           {"opencode-go":{"type":"api","key":"${{ secrets.OPENCODE_GO_KEY }}"}}
           ENDAUTH
 
-      - name: Index via AI
-        env:
-          VAULT_PATH: ${{ github.workspace }}/vault
-          SOURCE_PATH: ${{ github.workspace }}/source
-        run: python3 ${{ github.workspace }}/source/indexer.py
+      - name: Index new instructions
+        shell: bash
+        run: |
+          set -e
+          VAULT="${{ github.workspace }}/vault"
+          SOURCE="${{ github.workspace }}/source"
+
+          # Find new .md files not already in vault
+          for md in $(find "$SOURCE" -name '*.md' -not -path '*/.git/*'); do
+            rel=$(echo "$md" | sed "s|$SOURCE/||")
+            basename=$(basename "$md")
+
+            # Skip if filename already exists in vault Instructions/
+            if ls "$VAULT/Instructions/"*"$basename" 2>/dev/null | head -1 | grep -q .; then
+              echo "Skip $rel (already in vault)"
+              continue
+            fi
+
+            echo "=== Index: $rel ==="
+
+            # Copy file into vault (avoid external_directory permission issue)
+            cp "$md" "$VAULT/$basename"
+
+            # Run opencode with obsidian-indexer prompt
+            opencode run --dir "$VAULT" \
+              --dangerously-skip-permissions \
+              --model opencode-go/deepseek-v4-flash \
+              "You are an Obsidian vault indexer. Index the file $basename.
+
+Core rules:
+- Determine which module the file belongs to
+- If a file with the same topic already exists in Instructions/ — UPDATE it (merge new info, add sections, improve)
+- If it does NOT exist — CREATE new file
+- Always add wikilinks to related modules and instructions
+
+Available modules:
+- helpdesk: HelpDesK (ithive.helpdesk)
+- knowledgebase: База знаний (ithive.knowledgebase)
+- library: Библиотека (ithive.library)
+- branding: Брендирование Битрикс24 (ithive.changeportaldefaultheme)
+- gamification: Геймификация (ithive.gamification)
+- homepage: Главная страница (ithive.homepage)
+- hints: Интерактивные подсказки (ithive.hints)
+- workplaces: Карта офиса + Бронирование (ithive.workplaces)
+- university: Корпоративный университет (ithive.ipr)
+- multilang: Мультиязычность (ithive.b24multilanguage)
+- notifications: Настройка уведомлений (ithive.imsettingsforall)
+- polls: Опросы (ithive.polls)
+- assessment360: Оценка 360 (ithive.assessment360)
+- goals-tree: Управление целями. Дерево (ithive.goalsmanagement2)
+- goals-cascade: Управление целями. Каскад (ithive.goalsmanagement)
+- mediagallery: Фото и видео галерея (ithive.mediagallery)
+
+Filename format: Instructions/{Module} - {Topic}.md
+
+Frontmatter:
+---
+title: \"{Module} - {Topic}\"
+module: \"{Module}\"
+type: instruction
+version: \"\"
+created: $(date +%Y-%m-%d)
+updated: $(date +%Y-%m-%d)
+tags:
+  - type/instruction
+  - module/{slug}
+related: []
+---
+
+Body structure:
+# {Module} - {Topic}
+
+**Модуль:** [[Module - {Module}]]
+
+## Описание
+## Ключевые функции
+## Предусловия
+## Шаги
+## Ожидаемый результат
+## Граничные случаи
+## Связанные документы
+- [[Module - {Module}]]
+
+After creating/updating the file:
+1. Update MOC - Инструкции.md — add wikilink to the correct module section
+2. Update Modules/Module - {Name}.md — add wikilink to Инструкции section
+
+If module is unclear, choose best match by context."
+          echo "EXIT: $?"
+          rm -f "$VAULT/$basename"
+          done
 
       - name: Commit and push
         run: |
@@ -52,4 +137,6 @@ jobs:
             git commit -m "Auto-index new instructions"
             git push
             echo "Pushed to knowledge base"
+          else
+            echo "No changes"
           fi
