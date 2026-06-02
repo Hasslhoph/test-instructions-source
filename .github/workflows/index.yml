@@ -3,65 +3,53 @@ name: Index Instructions
 on:
   push:
     branches: [main]
-    paths: ['**/*.md']
+    paths: ['**/*.md', '.github/workflows/*']
 
 jobs:
   index:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source (Яна's instructions)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           path: source
 
-      - name: Checkout knowledge base vault
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: Hasslhoph/test-qa-knowledge-base
           token: ${{ secrets.PAT_KB }}
           path: vault
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Configure opencode with Go subscription
+      - name: Setup opencode and run indexer
+        env:
+          OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_KEY }}
         run: |
+          set -e
+
+          # Setup agents
           mkdir -p ~/.config/opencode/agent
+          cp "$GITHUB_WORKSPACE/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/
+          sed -i "s|/Users/.*/Documents/Obsidian|$GITHUB_WORKSPACE/vault|g" ~/.config/opencode/agent/obsidian-indexer.md
+
+          # Setup Go provider auth
           mkdir -p ~/.local/share/opencode
+          printf '{"opencode-go":{"type":"api","key":"%s"}}\n' "$OPENCODE_GO_API_KEY" > ~/.local/share/opencode/auth.json
 
-          # Copy agents from vault
-          cp -r "$GITHUB_WORKSPACE/vault/.opencode/agent/"* ~/.config/opencode/agent/
-
-          # Patch vault path in all agents
-          sed -i "s|/Users/.*/Documents/Obsidian|$GITHUB_WORKSPACE/vault|g" ~/.config/opencode/agent/*.md
-
-          # Set up Go provider auth
-          cat > ~/.local/share/opencode/auth.json << EOF
-          {
-            "opencode-go": {
-              "type": "api",
-              "key": "${{ secrets.OPENCODE_GO_KEY }}"
-            }
-          }
-          EOF
-
-      - name: Detect new/modified files
-        id: detect
-        run: |
+          # Detect new files
           cd "$GITHUB_WORKSPACE/source"
           git fetch origin main --depth=2
           FILES=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- '*.md' || true)
-          echo "changed<<EOF" >> $GITHUB_ENV
-          echo "$FILES" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
 
-      - name: Index via obsidian-indexer
-        if: env.changed != ''
-        run: |
-          cd /tmp
-          for file in ${{ env.changed }}; do
+          if [ -z "$FILES" ]; then
+            echo "No new .md files to process"
+            exit 0
+          fi
+
+          # Index each file
+          for file in $FILES; do
             full_path="$GITHUB_WORKSPACE/source/$file"
             [ -f "$full_path" ] || continue
             echo "=== Indexing: $file ==="
@@ -71,16 +59,10 @@ jobs:
               --dir "$GITHUB_WORKSPACE/vault" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
-              "Проиндексируй этот файл инструкции в vault.
-               1. Прочитай файл, определи модуль
-               2. Создай Instructions/{Module} - {Topic}.md с frontmatter и wikilinks
-               3. Обнови MOC - Инструкции.md
-               4. Обнови Modules/Module - {Name}.md"
+              "Index this instruction into the vault at $GITHUB_WORKSPACE/vault. Analyze the file, detect the module, create the file in Instructions/ with proper frontmatter and wikilinks, then update MOC - Инструкции.md and Modules/Module - {Name}.md."
           done
 
-      - name: Commit and push
-        if: env.changed != ''
-        run: |
+          # Commit and push
           cd "$GITHUB_WORKSPACE/vault"
           git config user.name "QA Indexer Bot"
           git config user.email "bot@qa-indexer"
