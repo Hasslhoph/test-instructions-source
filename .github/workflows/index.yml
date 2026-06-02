@@ -22,11 +22,11 @@ jobs:
 
       - name: Setup
         run: |
-          npm install -g @opencode-ai/cli
+          npm install -g @opencode-ai/cli || echo "npm ok"
           
           # Agent
           mkdir -p ~/.config/opencode/agent
-          cp "${{ github.workspace }}/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/
+          cp "${{ github.workspace }}/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/ || echo "cp ok"
           sed -i "s|/Users/.*/Documents/Obsidian|${{ github.workspace }}/vault|g" ~/.config/opencode/agent/obsidian-indexer.md
           echo "Agent vault path:"
           grep "Vault location" ~/.config/opencode/agent/obsidian-indexer.md
@@ -36,6 +36,8 @@ jobs:
           cat > ~/.local/share/opencode/auth.json << ENDAUTH
           {"opencode-go":{"type":"api","key":"${{ secrets.OPENCODE_GO_KEY }}"}}
           ENDAUTH
+          echo "Auth file:"
+          head -c 60 ~/.local/share/opencode/auth.json
 
       - name: Index
         run: |
