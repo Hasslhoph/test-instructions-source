@@ -91,13 +91,7 @@ If the module is unclear, choose the best match based on keywords and context.""
         args = [opencode_cmd, 'run', '--dir', vault_dir,
                 '--dangerously-skip-permissions',
                 '--model', OPENCODE_MODEL,
-                '--print-logs', prompt]
-        if opencode_cmd == 'npx':
-            args = ['npx', '--yes', '@opencode-ai/cli', 'run',
-                    '--dir', vault_dir,
-                    '--dangerously-skip-permissions',
-                    '--model', OPENCODE_MODEL,
-                    '--print-logs', prompt]
+                prompt]
 
         result = subprocess.run(args, capture_output=True, text=True, timeout=180)
         stderr_str = result.stderr.strip()

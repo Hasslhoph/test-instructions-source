@@ -19,14 +19,15 @@ jobs:
           token: ${{ secrets.PAT_KB }}
           path: vault
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Setup
+      - name: Install opencode
         run: |
-          npm install -g @opencode-ai/cli || echo "npm install failed, will use npx fallback"
-          echo "opencode: $(which opencode || echo 'not in PATH')"
+          curl -sL "https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-x64.tar.gz" -o /tmp/opencode.tar.gz
+          tar -xzf /tmp/opencode.tar.gz -C /tmp
+          mkdir -p ~/.opencode/bin
+          mv /tmp/opencode ~/.opencode/bin/opencode
+          chmod +x ~/.opencode/bin/opencode
+          echo "$HOME/.opencode/bin" >> $GITHUB_PATH
+          ~/.opencode/bin/opencode --version
 
       - name: Auth
         run: |
