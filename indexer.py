@@ -157,12 +157,29 @@ def detect_module_fallback(content: str, filepath: str) -> tuple:
     return 'unknown', 'Unknown'
 
 
-def vault_file_exists(vault_filename: str) -> bool:
-    return os.path.exists(os.path.join(VAULT_PATH, 'Instructions', vault_filename))
+def clean_title(title: str, module_name: str) -> str:
+    prefix = f'{module_name} - '
+    if title.startswith(prefix):
+        return title[len(prefix):]
+    if title.startswith(module_name):
+        return title[len(module_name):].lstrip(' -')
+    return title
+
+
+def vault_file_exists(vault_filename: str, original_title: str | None = None, module_name: str | None = None) -> bool:
+    base = os.path.join(VAULT_PATH, 'Instructions')
+    if os.path.exists(os.path.join(base, vault_filename)):
+        return True
+    if original_title and module_name:
+        legacy = f'{module_name} - {original_title}.md'
+        if legacy != vault_filename and os.path.exists(os.path.join(base, legacy)):
+            return True
+    return False
 
 
 def create_vault_file(content: str, title: str, module_slug: str, module_name: str) -> str:
     today = date.today().isoformat()
+    title = clean_title(title, module_name)
     vault_filename = f'{module_name} - {title}.md'
     vault_filepath = os.path.join(VAULT_PATH, 'Instructions', vault_filename)
 
@@ -286,10 +303,12 @@ def main():
             content = f.read()
 
         title = extract_title(content)
+        original_title = title
 
         module_slug, module_name = detect_module_fallback(content, rel_path)
+        title = clean_title(title, module_name)
         quick_vault_filename = f'{module_name} - {title}.md'
-        if vault_file_exists(quick_vault_filename):
+        if vault_file_exists(quick_vault_filename, original_title, module_name):
             print(f'  Skipping (already in vault): Instructions/{quick_vault_filename}')
             continue
 
@@ -309,12 +328,11 @@ def main():
                     break
 
             if ai_slug in MODULE_NAMES:
-                module_slug, module_name, title = ai_slug, MODULE_NAMES[ai_slug], ai_title
-            else:
-                print(f'  AI returned unknown module "{ai_name}", using fallback: {module_name}')
+                module_slug, module_name, title = ai_slug, MODULE_NAMES[ai_slug], clean_title(ai_title, MODULE_NAMES[ai_slug])
+                original_title = ai_title
 
         vault_filename = f'{module_name} - {title}.md'
-        if vault_file_exists(vault_filename):
+        if vault_file_exists(vault_filename, original_title, module_name):
             print(f'  Skipping (already in vault): Instructions/{vault_filename}')
             continue
 
