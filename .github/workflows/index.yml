@@ -66,13 +66,12 @@ jobs:
             full_path="$GITHUB_WORKSPACE/source/$file"
             [ -f "$full_path" ] || continue
             echo "=== Indexing: $file ==="
-            npx --yes @opencode-ai/cli run \
-              --agent obsidian-indexer \
+            timeout 300 npx --yes @opencode-ai/cli run \
               --file "$full_path" \
               --dir "$GITHUB_WORKSPACE/vault" \
               --dangerously-skip-permissions \
               --model opencode/deepseek-v4-flash-free \
-              "Create instruction file in $GITHUB_WORKSPACE/vault/Instructions/ with frontmatter, wikilinks. Update MOC and module file."
+              "@obsidian-indexer Create instruction file in $GITHUB_WORKSPACE/vault/Instructions/ with frontmatter, wikilinks. Update MOC and module file."
           done
 
       - name: Commit and push
