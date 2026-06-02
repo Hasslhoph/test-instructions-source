@@ -25,7 +25,11 @@ jobs:
 
       - name: Setup
         run: |
-          npm install -g @opencode-ai/cli
+          npm install -g @opencode-ai/cli || echo "npm install failed, will use npx fallback"
+          echo "opencode: $(which opencode || echo 'not in PATH')"
+
+      - name: Auth
+        run: |
           mkdir -p ~/.local/share/opencode
           cat > ~/.local/share/opencode/auth.json << ENDAUTH
           {"opencode-go":{"type":"api","key":"${{ secrets.OPENCODE_GO_KEY }}"}}

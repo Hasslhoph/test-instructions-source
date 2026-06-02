@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import json
+import shutil
 import subprocess
 from datetime import date
 
@@ -37,13 +38,26 @@ def extract_title(content: str) -> str:
     return match.group(1).strip() if match else 'Untitled'
 
 
+def find_opencode() -> str | None:
+    for cmd in ['opencode', 'npx', 'opencode.exe']:
+        path = shutil.which(cmd)
+        if path:
+            return cmd
+    return None
+
+
 def analyze_with_ai(filepath: str, content: str, vault_dir: str) -> dict:
+    opencode_cmd = find_opencode()
+    if not opencode_cmd:
+        print(f'  opencode CLI not found, skipping AI analysis')
+        return None
+
     prompt = f"""Analyze this instruction file and return ONLY valid JSON.
 
 FILE PATH: {filepath}
 
 CONTENT:
-{content[:5000]}
+{content[:4000]}
 
 AVAILABLE MODULES:
 {MODULES_PROMPT}
@@ -61,37 +75,44 @@ Return ONLY this JSON (no markdown, no code blocks, no extra text):
 
 If the module is unclear, choose the best match based on keywords and context."""
 
-    result = subprocess.run(
-        ['opencode', 'run',
-         '--dir', vault_dir,
-         '--dangerously-skip-permissions',
-         '--model', OPENCODE_MODEL,
-         prompt],
-        capture_output=True, text=True, timeout=180
-    )
+    try:
+        args = [opencode_cmd, 'run', '--dir', vault_dir,
+                '--dangerously-skip-permissions',
+                '--model', OPENCODE_MODEL,
+                '--print-logs', prompt]
+        if opencode_cmd == 'npx':
+            args = ['npx', '--yes', '@opencode-ai/cli', 'run',
+                    '--dir', vault_dir,
+                    '--dangerously-skip-permissions',
+                    '--model', OPENCODE_MODEL,
+                    '--print-logs', prompt]
 
-    stdout = result.stdout.strip()
-    stderr = result.stderr.strip()
+        result = subprocess.run(args, capture_output=True, text=True, timeout=180)
+        stdout = result.stdout.strip()
+        stderr_str = result.stderr.strip()
 
-    if result.returncode != 0:
-        print(f'  AI analysis failed (exit {result.returncode}): {stderr[:200]}')
+        if result.returncode != 0:
+            print(f'  AI analysis failed (exit {result.returncode}): {stderr_str[:300]}')
+            return None
+    except FileNotFoundError:
+        print(f'  opencode CLI not found at path')
+        return None
+    except subprocess.TimeoutExpired:
+        print(f'  AI analysis timed out (180s)')
+        return None
+    except Exception as e:
+        print(f'  AI analysis error: {e}')
         return None
 
-    json_match = re.search(r'\{[^{}]*\}', stdout, re.DOTALL)
-    if json_match:
-        try:
-            return json.loads(json_match.group())
-        except json.JSONDecodeError:
-            pass
+    for pattern in [r'```(?:json)?\s*\n?(.*?)```', r'(\{[\s\S]*?"module_slug"[\s\S]*?\})']:
+        match = re.search(pattern, stdout, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                continue
 
-    json_match = re.search(r'```(?:json)?\s*\n?(.*?)```', stdout, re.DOTALL)
-    if json_match:
-        try:
-            return json.loads(json_match.group(1))
-        except json.JSONDecodeError:
-            pass
-
-    print(f'  Failed to parse AI response: {stdout[:200]}')
+    print(f'  AI response not parseable: {stdout[:300]}')
     return None
 
 
