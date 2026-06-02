@@ -250,6 +250,19 @@ def main():
     new_files = [f for f in md_files if os.path.relpath(f, SOURCE_PATH) not in indexed_set]
     print(f'Found {len(md_files)} .md files, {len(new_files)} new, {len(md_files) - len(new_files)} already indexed')
 
+    existing_vault_titles = []
+    if os.path.isdir(os.path.join(VAULT_PATH, 'Instructions')):
+        for fn in os.listdir(os.path.join(VAULT_PATH, 'Instructions')):
+            if fn.endswith('.md') and ' - ' in fn:
+                existing_vault_titles.append(fn[fn.index(' - ') + 3:-3].lower().strip())
+
+    def title_exists_in_vault(t: str) -> bool:
+        tl = t.lower().strip().rstrip('.')
+        for vt in existing_vault_titles:
+            if tl == vt or tl in vt or vt in tl:
+                return True
+        return False
+
     indexed = 0
     for filepath in new_files:
         rel_path = os.path.relpath(filepath, SOURCE_PATH)
@@ -259,6 +272,11 @@ def main():
             content = f.read()
 
         title = extract_title(content)
+
+        if title_exists_in_vault(title):
+            print(f'  Skipping (title exists in vault): {title}')
+            indexed_set.add(rel_path)
+            continue
 
         result = analyze_with_ai(rel_path, content, VAULT_PATH)
 
