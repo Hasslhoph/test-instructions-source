@@ -1,0 +1,9 @@
+title: Администрирование модуля
+href: 01-nastroyki-modulya-otsenka-360.md
+items:
+  - name: Настройки модуля «Оценка 360»
+    href: 01-nastroyki-modulya-otsenka-360.md
+  - name: Замена описания шкалы на слайдере оценки
+    href: 02-zamena-opisaniya-shkaly-na-slaydere-otsenki.md
+  - name: Установка, обновление и удаление модуля
+    href: 03-ustanovka-obnovlenie-i-udalenie-modulya.md

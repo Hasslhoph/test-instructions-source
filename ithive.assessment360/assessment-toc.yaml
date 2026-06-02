@@ -1,0 +1,25 @@
+title: Структура документации по модулю «Оценка 360»
+items:
+  - name: Обновления документации
+    href: whats-new.md
+  - name: Инструкция к модулю
+    href: user-guide/about.md
+    items:
+      - name: О продукте
+        include:
+          path: user-guide/03-o-produkte/toc.yaml
+          mode: link
+      - name: Подготовка к оценке
+        include:
+          path: user-guide/04-podgotovka-k-otsenke/toc.yaml
+          mode: link
+      - name: Проведение оценки
+        include:
+          path: user-guide/05-provedenie-otsenki/toc.yaml
+          mode: link
+      - name: Администрирование модуля
+        include:
+          path: user-guide/06-administrirovanie-modulya/toc.yaml
+          mode: link
+  - name: История версий
+    href: versions.md

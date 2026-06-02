@@ -1,0 +1,21 @@
+title: Проведение оценки
+href: 01-zapusk-otsenki.md
+items:
+  - name: Запуск оценки
+    href: 01-zapusk-otsenki.md
+  - name: Теги в оценках
+    href: 02-tegi-v-otsenkah.md
+  - name: Оценка компетенций
+    href: 03-otsenka-kompetentsiy.md
+  - name: Сбор, обработка и завершение оценки
+    href: 04-sbor-obrabotka-i-zavershenie-otsenki.md
+  - name: Результаты оценки. Обзор итогового отчета
+    href: 05-rezultaty-otsenki-obzor-itogovogo-otcheta.md
+  - name: Актуализация итоговых оценок и уровней владения компетенциями
+    href: 06-aktualizatsiya-itogovyh-otsenok-i-urovney-vladeniya-kompetentsiyami.md
+  - name: Оценка 360 в мобильном приложении
+    href: 07-otsenka-360-v-mobilnom-prilozhenii.md
+  - name: Анализ результатов оценки в Excel
+    href: 08-analiz-rezultatov-otsenki-v-excel.md
+  - name: BI-аналитика по проведенным оценкам
+    href: 09-bi-analitika-po-provedennym-otsenkam.md

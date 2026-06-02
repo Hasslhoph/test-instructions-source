@@ -1,0 +1,15 @@
+title: Подготовка к оценке
+href: 01-dobavlenie-kompetentsiy-i-kategoriy.md
+items:
+  - name: Добавление компетенций и категорий
+    href: 01-dobavlenie-kompetentsiy-i-kategoriy.md
+  - name: Добавление индикаторов и привязка к компетенциям
+    href: 02-dobavlenie-indikatorov-i-privyazka-k-kompetentsiyam.md
+  - name: Способы оценки компетенций
+    href: 03-sposoby-otsenki-kompetentsiy.md
+  - name: Сценарии оценки компетенций
+    href: 04-stsenarii-otsenki-kompetentsiy.md
+  - name: Шкалы для оценки компетенций
+    href: 05-shkaly-dlya-otsenki-kompetentsiy.md
+  - name: Шаблоны компетенций
+    href: 06-shablony-kompetentsiy.md
