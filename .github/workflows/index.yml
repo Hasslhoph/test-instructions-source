@@ -71,7 +71,7 @@ jobs:
               --file "$full_path" \
               --dir "$GITHUB_WORKSPACE/vault" \
               --dangerously-skip-permissions \
-              --model opencode-go/deepseek-v4-flash \
+              --model opencode/deepseek-v4-flash-free \
               "Create instruction file in $GITHUB_WORKSPACE/vault/Instructions/ with frontmatter, wikilinks. Update MOC and module file."
           done
 
