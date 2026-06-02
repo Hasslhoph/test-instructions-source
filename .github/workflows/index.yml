@@ -21,12 +21,14 @@ jobs:
 
       - name: Install opencode
         run: |
+          mkdir -p ~/.opencode/bin
           curl -sL "https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-x64.tar.gz" -o /tmp/opencode.tar.gz
           tar -xzf /tmp/opencode.tar.gz -C /tmp
-          mkdir -p ~/.opencode/bin
           mv /tmp/opencode ~/.opencode/bin/opencode
           chmod +x ~/.opencode/bin/opencode
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.opencode/bin:$PATH"
+          which opencode
           opencode --version
 
       - name: Auth
@@ -35,11 +37,10 @@ jobs:
           cat > ~/.local/share/opencode/auth.json << ENDAUTH
           {"opencode-go":{"type":"api","key":"${{ secrets.OPENCODE_GO_KEY }}"}}
           ENDAUTH
-          head -c 20 ~/.local/share/opencode/auth.json
 
       - name: Index
         run: |
-          set -e
+          set -euo pipefail
           VAULT="${{ github.workspace }}/vault"
           SOURCE="${{ github.workspace }}/source"
 
@@ -55,13 +56,13 @@ jobs:
             echo "=== Index: $basename ==="
             cp "$md" "$VAULT/$basename"
 
-            opencode run "Index FILE. Determine module. Create file with frontmatter in Instructions/. Update MOC and Module file. Use Russian. NEVER delete files. FILE: $basename" \
+            opencode run "Index this instruction file in Obsidian vault. Create file in Instructions/ with proper frontmatter. Update MOC - Инструкции.md and Modules/Module - *.md with wikilinks. Write in Russian. The file to index is: $basename" \
               --dir "$VAULT" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
-              2>&1
+              2>&1 \
+              || echo "FAILED: $basename"
 
-            echo "EXIT: $?"
             rm -f "$VAULT/$basename"
           done
 
