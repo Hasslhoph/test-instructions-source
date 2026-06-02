@@ -22,8 +22,8 @@ jobs:
 
       - name: Install opencode
         run: |
-          npm install -g @opencode-ai/cli 2>&1; echo "npm exit: $?"
-          which opencode 2>/dev/null && opencode --version || echo "opencode not in PATH"
+          npm install -g @opencode-ai/cli || echo "Caution: npm install had warnings"
+          echo "opencode: $(opencode --version 2>/dev/null || npx @opencode-ai/cli --version 2>/dev/null || echo 'using npx')"
 
       - name: Setup agent and auth
         run: |
