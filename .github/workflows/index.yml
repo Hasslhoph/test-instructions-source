@@ -44,7 +44,7 @@ jobs:
           set +e
           cd "${{ github.workspace }}/source"
           git fetch origin main --depth=2
-          for file in $(git diff --name-only --diff-filter=A HEAD~1 HEAD -- '*.md' || true); do
+          for file in $(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- '*.md' || true); do
             f="${{ github.workspace }}/source/$file"
             [ -f "$f" ] || continue
             echo "=== $file ==="
