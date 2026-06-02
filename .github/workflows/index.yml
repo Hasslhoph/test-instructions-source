@@ -62,16 +62,29 @@ jobs:
       - name: Index via obsidian-indexer
         if: env.changed != ''
         run: |
+          # First verify opencode works
+          echo "=== Step A: Test opencode version ==="
+          which opencode
+          opencode --version
+
+          echo "=== Step B: List agents ==="
+          ls -la ~/.config/opencode/agent/
+
+          echo "=== Step C: Check auth ==="
+          cat ~/.local/share/opencode/auth.json
+
+          echo "=== Step D: Index files ==="
           for file in ${{ env.changed }}; do
             full_path="$GITHUB_WORKSPACE/source/$file"
             [ -f "$full_path" ] || continue
             echo "=== Indexing: $file ==="
-            opencode run \
+            opencode run --pure \
               --file "$full_path" \
               --dir "$GITHUB_WORKSPACE/vault" \
               --dangerously-skip-permissions \
               --model opencode/deepseek-v4-flash-free \
-              "@obsidian-indexer Create instruction file in $GITHUB_WORKSPACE/vault/Instructions/ with frontmatter, wikilinks. Update MOC and module file."
+              --format json \
+              "@obsidian-indexer Create instruction from this file in $GITHUB_WORKSPACE/vault/Instructions/"
           done
 
       - name: Commit and push
