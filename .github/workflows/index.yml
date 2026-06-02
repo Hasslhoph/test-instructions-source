@@ -35,7 +35,14 @@ jobs:
       - name: Config auth
         run: |
           mkdir -p ~/.local/share/opencode
-          echo '{"opencode-go":{"type":"api","key":"'"${{ secrets.OPENCODE_GO_KEY }}"'"}}' > ~/.local/share/opencode/auth.json
+          cat > ~/.local/share/opencode/auth.json << ENDAUTH
+          {
+            "opencode-go": {
+              "type": "api",
+              "key": "${{ secrets.OPENCODE_GO_KEY }}"
+            }
+          }
+          ENDAUTH
           echo "OK: auth configured"
 
       - name: Index
