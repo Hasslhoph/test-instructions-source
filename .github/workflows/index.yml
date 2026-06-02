@@ -23,55 +23,50 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup
-        run: |
-          npm install -g @opencode-ai/cli
-          mkdir -p ~/.config/opencode/agent
-          cp "$GITHUB_WORKSPACE/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/
-          sed -i "s|/Users/.*/Documents/Obsidian|$GITHUB_WORKSPACE/vault|g" ~/.config/opencode/agent/obsidian-indexer.md
-          mkdir -p ~/.local/share/opencode
-          printf '{"opencode-go":{"type":"api","key":"%s"}}\n' "${{ secrets.OPENCODE_GO_KEY }}" > ~/.local/share/opencode/auth.json
+      - name: Install opencode
+        run: npm install -g @opencode-ai/cli && echo "OK: installed"
 
-      - name: Index new files
+      - name: Config agent
+        run: |
+          mkdir -p ~/.config/opencode/agent
+          cp -v "$GITHUB_WORKSPACE/vault/.opencode/agent/obsidian-indexer.md" ~/.config/opencode/agent/
+          sed -i "s|/Users/.*/Documents/Obsidian|$GITHUB_WORKSPACE/vault|g" ~/.config/opencode/agent/obsidian-indexer.md
+          echo "OK: agent configured"
+
+      - name: Config auth
+        run: |
+          mkdir -p ~/.local/share/opencode
+          echo '{"opencode-go":{"type":"api","key":"'"${{ secrets.OPENCODE_GO_KEY }}"'"}}' > ~/.local/share/opencode/auth.json
+          echo "OK: auth configured"
+
+      - name: Index
         run: |
           set +e
           cd "$GITHUB_WORKSPACE/source"
           git fetch origin main --depth=2
-          NEW=$(git diff --name-only --diff-filter=A HEAD~1 HEAD -- '*.md' || true)
-          
-          if [ -z "$NEW" ]; then
-            echo "No new files to index"
-            exit 0
-          fi
-          
+          NEW=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- '*.md' || true)
+          if [ -z "$NEW" ]; then echo "No new files"; exit 0; fi
           for file in $NEW; do
             full="$GITHUB_WORKSPACE/source/$file"
             [ -f "$full" ] || continue
-            echo "=== Indexing: $file ==="
-            
+            echo "Indexing: $file"
             opencode run --pure \
               --file "$full" \
               --dir "$GITHUB_WORKSPACE/vault" \
               --dangerously-skip-permissions \
               --model opencode/deepseek-v4-flash-free \
-              "@obsidian-indexer Create instruction file in vault/Instructions/ with frontmatter, wikilinks" \
-              2>&1
-            rc=$?
-            echo "Exit code: $rc"
-            if [ $rc -ne 0 ]; then
-              echo "OpenCode failed. Continuing anyway..."
-            fi
+              "@obsidian-indexer Create instruction in vault/Instructions/" 2>&1
+            echo "Exit: $?"
           done
 
-      - name: Commit & push
+      - name: Push
         run: |
           cd "$GITHUB_WORKSPACE/vault"
           git config user.name "QA Indexer Bot"
           git config user.email "bot@qa-indexer"
           git add -A
           if ! git diff --staged --quiet; then
-            git commit -m "Auto-index new instructions"
-            git push
+            git commit -m "Auto-index"; git push; echo "Pushed"
           else
             echo "No changes"
           fi
