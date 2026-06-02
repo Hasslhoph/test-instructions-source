@@ -19,7 +19,19 @@ jobs:
           token: ${{ secrets.PAT_KB }}
           path: vault
 
-      - name: Index via Python
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup
+        run: |
+          npm install -g @opencode-ai/cli
+          mkdir -p ~/.local/share/opencode
+          cat > ~/.local/share/opencode/auth.json << ENDAUTH
+          {"opencode-go":{"type":"api","key":"${{ secrets.OPENCODE_GO_KEY }}"}}
+          ENDAUTH
+
+      - name: Index via AI
         env:
           VAULT_PATH: ${{ github.workspace }}/vault
           SOURCE_PATH: ${{ github.workspace }}/source
@@ -34,7 +46,5 @@ jobs:
           if ! git diff --staged --quiet; then
             git commit -m "Auto-index new instructions"
             git push
-            echo "✅ Pushed to knowledge base"
-          else
-            echo "ℹ️ No changes to commit"
+            echo "Pushed to knowledge base"
           fi
