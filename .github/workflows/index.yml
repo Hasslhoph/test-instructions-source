@@ -12,6 +12,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: source
+          fetch-depth: 0
 
       - uses: actions/checkout@v4
         with:
@@ -43,20 +44,33 @@ jobs:
           set -euo pipefail
           VAULT="${{ github.workspace }}/vault"
           SOURCE="${{ github.workspace }}/source"
+          cd "$SOURCE"
 
-          for md in $(find "$SOURCE" -name '*.md' -not -path '*/.git/*'); do
+          # Get only .md files changed in this push
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            CHANGED=$(git diff --name-only HEAD~1 -- '*.md' || true)
+          else
+            # First commit: process all .md files
+            CHANGED=$(git ls-files '*.md')
+          fi
+
+          if [ -z "$CHANGED" ]; then
+            echo "No .md files changed"
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED"
+          echo "---"
+
+          while IFS= read -r md; do
+            [ -z "$md" ] && continue
             basename=$(basename "$md")
-            [ -z "$basename" ] && continue
-
-            if ls "$VAULT/Instructions" 2>/dev/null | grep -qiF "$basename"; then
-              echo "Skip $basename"
-              continue
-            fi
 
             echo "=== Index: $basename ==="
             cp "$md" "$VAULT/$basename"
 
-            opencode run "Index this instruction file in Obsidian vault. Create file in Instructions/ with proper frontmatter. Update MOC - Инструкции.md and Modules/Module - *.md with wikilinks. Write in Russian. The file to index is: $basename" \
+            opencode run "Index this instruction file in Obsidian vault. Compare with existing files in Instructions/. If a file with same topic already exists — UPDATE it with new content. If it does NOT exist — CREATE it. Always add proper frontmatter. Update MOC - Инструкции.md and Modules/Module - *.md with wikilinks. Write in Russian. The file to index is: $basename" \
               --dir "$VAULT" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
@@ -64,7 +78,7 @@ jobs:
               || echo "FAILED: $basename"
 
             rm -f "$VAULT/$basename"
-          done
+          done <<< "$CHANGED"
 
       - name: Commit and push
         run: |
