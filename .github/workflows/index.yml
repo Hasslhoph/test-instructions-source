@@ -50,7 +50,6 @@ jobs:
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
             CHANGED=$(git diff --name-only HEAD~1 -- '*.md' || true)
           else
-            # First commit: process all .md files
             CHANGED=$(git ls-files '*.md')
           fi
 
@@ -63,6 +62,117 @@ jobs:
           echo "$CHANGED"
           echo "---"
 
+          # Write the full subagent prompt to a file inside vault
+          cat > "$VAULT/prompt.txt" << 'ENDPROMPT'
+          You are an Obsidian vault indexer for iThive modules.
+
+          ## Purpose
+          Create and maintain a knowledge base (RAG) in Obsidian from iThive module instructions.
+
+          ## Vault structure
+          The vault has these directories:
+          - MOC - Инструкции.md — map of content for all instructions, organized by module
+          - Modules/ — one file per module (Module - {Name}.md)
+          - Instructions/ — instruction files
+          - Test Cases/ — test cases (NOT your responsibility)
+
+          ## Available modules
+
+          | Module | Slug | Package |
+          |--------|------|---------|
+          | HelpDesk | helpdesk | ithive.helpdesk |
+          | База знаний | knowledgebase | ithive.knowledgebase |
+          | Библиотека | library | ithive.library |
+          | Брендирование Битрикс24 | branding | ithive.changeportaldefaultheme |
+          | Геймификация | gamification | ithive.gamification |
+          | Главная страница | homepage | ithive.homepage |
+          | Интерактивные подсказки | hints | ithive.hints |
+          | Карта офиса + Бронирование | workplaces | ithive.workplaces |
+          | Корпоративный университет | university | ithive.ipr |
+          | Мультиязычность | multilang | ithive.b24multilanguage |
+          | Настройка уведомлений | notifications | ithive.imsettingsforall |
+          | Опросы | polls | ithive.polls |
+          | Оценка 360 | assessment360 | ithive.assessment360 |
+          | Управление целями. Дерево | goals-tree | ithive.goalsmanagement2 |
+          | Управление целями. Каскад | goals-cascade | ithive.goalsmanagement |
+          | Фото и видео галерея | mediagallery | ithive.mediagallery |
+
+          ## Workflow
+
+          ### 1. Analyze content
+          Determine:
+          - **Module**: by keywords, module name, package
+          - **Topic**: what specifically (settings, creating, configuring, etc.)
+          - **Related modules**: are other modules mentioned
+
+          ### 2. Create or update file
+          Create/update file in Instructions/.
+          Filename: {Module} - {Topic}.md
+
+          ### 3. Frontmatter (properties)
+          Always add YAML frontmatter:
+          ---
+          title: "{Module} - {Topic}"
+          module: "{Module}"
+          type: instruction
+          version: ""
+          created: YYYY-MM-DD
+          updated: YYYY-MM-DD
+          tags:
+            - type/instruction
+            - module/{slug}
+          related: ["Module - Related1", "Module - Related2"]
+          ---
+
+          ### 4. File body structure
+          Required sections:
+          # {Module} - {Topic}
+
+          **Модуль:** [[Module - {Module}]]
+
+          ## Описание
+
+          ## Ключевые функции
+
+          > List the main functions/scenarios. Critical for AI checklist generation.
+
+          - Function 1
+          - Function 2
+
+          ## Предусловия
+
+          ## Шаги
+
+          ## Ожидаемый результат
+
+          ## Граничные случаи
+
+          > Edge cases, limitations, known issues.
+
+          ## Связанные документы
+
+          ### 5. Wikilinks
+          In the body add:
+          - Link to module: [[Module - {Module}]]
+          - Links to related modules if mentioned
+
+          ### 6. Update MOC
+          After creating/updating file, update MOC - Инструкции.md.
+          Add wikilink to the new file in the corresponding module section.
+
+          ### 7. Update Module file
+          If the module file does not yet have a link to the new instruction, add it under the ## Инструкции section.
+
+          ## Rules
+          - Always use wikilinks [[ ]] for connections
+          - Always add tags module/{slug} and type/instruction
+          - If module is unclear — choose best match by keywords and context
+          - If document spans multiple modules — list all in related
+          - NEVER delete existing files — only update them
+          - If file already exists — UPDATE it, do NOT create a duplicate
+          - Write in Russian
+          ENDPROMPT
+
           while IFS= read -r md; do
             [ -z "$md" ] && continue
             basename=$(basename "$md")
@@ -70,15 +180,17 @@ jobs:
             echo "=== Index: $basename ==="
             cp "$md" "$VAULT/$basename"
 
-            opencode run "Index this instruction file in Obsidian vault. Compare with existing files in Instructions/. If a file with same topic already exists — UPDATE it with new content. If it does NOT exist — CREATE it. Always add proper frontmatter. Update MOC - Инструкции.md and Modules/Module - *.md with wikilinks. Write in Russian. The file to index is: $basename" \
+            opencode run "Index the file $basename" \
               --dir "$VAULT" \
               --dangerously-skip-permissions \
               --model opencode-go/deepseek-v4-flash \
+              --file prompt.txt \
               2>&1 \
               || echo "FAILED: $basename"
 
             rm -f "$VAULT/$basename"
           done <<< "$CHANGED"
+          rm -f "$VAULT/prompt.txt"
 
       - name: Commit and push
         run: |
